@@ -23,7 +23,6 @@ import           Control.Monad        hiding (fmap)
 import qualified Data.ByteString.Lazy           as LBS
 import qualified Data.ByteString.Short          as SBS
 
-
 import           Codec.Serialise
 import           Cardano.Api                    (PlutusScriptV2, writeFileTextEnvelope)
 import           Cardano.Api.Shelley            (PlutusScript (PlutusScriptSerialised))
@@ -41,16 +40,12 @@ import           Prelude              (IO, putStrLn)
 import qualified Ledger.Ada as PlutusV2
 import Plutus.V1.Ledger.Bytes (fromHex)
 
+import Common (VestingDatum, beneficiary, deadline)
 
-data VestingDatum = VestingDatum
-    { beneficiary :: PaymentPubKeyHash
-    , deadline    :: PlutusV2.POSIXTime
-    }
 
 vestingFee :: Integer
 vestingFee = 1500000
 
-PlutusTx.unstableMakeIsData ''VestingDatum
 
 {-# INLINABLE mkValidator #-}
 mkValidator :: PubKeyHash -> VestingDatum -> () -> PlutusV2.ScriptContext -> Bool
