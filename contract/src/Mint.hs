@@ -69,6 +69,11 @@ diffInDays a b
     | b > a = divide (b - a) (24 * 60 * 60 * 1000)
     | otherwise = 0
 
+capDays :: Integer -> Integer
+capDays d
+    | d > 3650 = 3650
+    | otherwise = d
+
 
 {-# INLINABLE mkValidator #-}
 mkValidator :: PubKeyHash -> BuiltinData -> PlutusV2.ScriptContext -> Bool
@@ -93,7 +98,7 @@ mkValidator pkh _ ctx =  traceIfFalse "invalid mint amount" checkNFTAmount &&
             PlutusV2.OutputDatum d -> case PlutusTx.fromBuiltinData $ PlutusV2.getDatum d of
                 Just VestingDatum{deadline} ->
                     case extractFiniteUpper $ PlutusV2.txInfoValidRange info of
-                        Just upper -> diffInDays (PlutusV2.getPOSIXTime deadline) (PlutusV2.getPOSIXTime upper)
+                        Just upper -> capDays $ diffInDays (PlutusV2.getPOSIXTime deadline) (PlutusV2.getPOSIXTime upper)
                         Nothing -> 0
                 Nothing -> 0
 
