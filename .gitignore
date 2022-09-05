@@ -1,2 +1,4 @@
 keys
 .idea
+*.pickle
+*.pyc
