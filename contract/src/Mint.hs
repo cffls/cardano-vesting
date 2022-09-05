@@ -50,66 +50,61 @@ data VestingDatum = VestingDatum
     , deadline    :: PlutusV2.POSIXTime
     }
 
+PlutusTx.makeLift ''VestingDatum
 PlutusTx.unstableMakeIsData ''VestingDatum
 
+data ContractParam = ContractParam
+    { vestPKH :: PlutusV2.ValidatorHash
+    , feePKH  :: PlutusV2.PubKeyHash
+    , mintFee     :: Integer
+    }
 
-mintingFee :: Integer
-mintingFee = 10000000
-
-vpkh :: PlutusV2.ValidatorHash
-vpkh = PlutusV2.ValidatorHash "174f1166deeee0844aed52352db46f222b7d3caacf07e49ab18bf869"
-
-extractFiniteUpper :: POSIXTimeRange -> Maybe POSIXTime
-extractFiniteUpper i = case ivTo i of
-    UpperBound (Finite v) _ -> Just v
-    _ -> Nothing
-
-diffInDays :: Integer -> Integer -> Integer
-diffInDays a b
-    | b > a = divide (b - a) (24 * 60 * 60 * 1000)
-    | otherwise = 0
-
-capDays :: Integer -> Integer
-capDays d
-    | d > 3650 = 3650
-    | otherwise = d
-
+PlutusTx.makeLift ''ContractParam
+PlutusTx.unstableMakeIsData ''ContractParam
 
 {-# INLINABLE mkValidator #-}
-mkValidator :: PubKeyHash -> BuiltinData -> PlutusV2.ScriptContext -> Bool
-mkValidator pkh _ ctx =  traceIfFalse "invalid mint amount" checkNFTAmount &&
-                         traceIfFalse "insufficient fee" paidFee
+mkValidator :: ContractParam -> BuiltinData -> PlutusV2.ScriptContext -> Bool
+mkValidator cp _ ctx =  traceIfFalse "insufficient fee" paidFee &&
+                         traceIfFalse "invalid mint amount" checkNFTAmount
   where
     info :: PlutusV2.TxInfo
     info = PlutusV2.scriptContextTxInfo ctx
 
-    scriptOutputsAtVest :: PlutusV2.ValidatorHash -> PlutusV2.TxInfo -> [PlutusV2.TxOut]
-    scriptOutputsAtVest pk p =
-        let flt o@PlutusV2.TxOut{PlutusV2.txOutAddress =
-            PlutusV2.Address (PlutusV2.ScriptCredential pk') _} | pk == pk' = Just o
-            flt _                             = Nothing
-        in mapMaybe flt (PlutusV2.txInfoOutputs p)
+    extractFiniteUpper :: POSIXTimeRange -> Maybe POSIXTime
+    extractFiniteUpper i = case ivTo i of
+        UpperBound (Finite v) _ -> Just v
+        _ -> Nothing
 
-    getLockedDuration :: PlutusV2.TxOut -> Integer
-    getLockedDuration o =
-        case PlutusV2.txOutDatum o of
+    diffInDays :: Integer -> Integer -> Integer
+    diffInDays a b
+        | b > a = divide (b - a) (24 * 60 * 60 * 1000)
+        | otherwise = 0
+
+    capDays :: Integer -> Integer
+    capDays d
+        | d > 3650 = 3650
+        | otherwise = d
+
+    getLockedDuration :: PlutusV2.OutputDatum -> Integer
+    getLockedDuration d =
+        case d of
             PlutusV2.NoOutputDatum -> 0
             PlutusV2.OutputDatumHash _ -> 0
-            PlutusV2.OutputDatum d -> case PlutusTx.fromBuiltinData $ PlutusV2.getDatum d of
+            PlutusV2.OutputDatum d' -> case PlutusTx.fromBuiltinData $ PlutusV2.getDatum d' of
                 Just VestingDatum{deadline} ->
                     case extractFiniteUpper $ PlutusV2.txInfoValidRange info of
-                        Just upper -> capDays $ diffInDays (PlutusV2.getPOSIXTime deadline) (PlutusV2.getPOSIXTime upper)
+                        Just upper -> capDays $ diffInDays (PlutusV2.getPOSIXTime upper) (PlutusV2.getPOSIXTime deadline)
                         Nothing -> 0
                 Nothing -> 0
 
-    getMaxMint :: [PlutusV2.TxOut] -> Integer
-    getMaxMint outs = foldl (\acc o -> acc + getMaxMintFromOneOutput o) 0 outs
+    getMaxMint :: [(PlutusV2.OutputDatum, PlutusV2.Value)] -> Integer
+    getMaxMint outs = foldl (\acc (d, v) -> acc + getMaxMintFromOneOutput d v) 0 outs
         where 
-            getMaxMintFromOneOutput o = getLockedDuration o * getLovelaceAmount o
-            getLovelaceAmount o = ADA.getLovelace (ADA.fromValue $ PlutusV2.txOutValue o )
+            getMaxMintFromOneOutput d v = getLockedDuration d * getLovelaceAmount v
+            getLovelaceAmount v = ADA.getLovelace (ADA.fromValue v)
 
     maxMint :: Integer
-    maxMint = getMaxMint $ scriptOutputsAtVest vpkh info
+    maxMint = getMaxMint $ PSU.V2.scriptOutputsAt (vestPKH cp) info
 
     checkNFTAmount :: Bool
     checkNFTAmount = case Value.flattenValue (PlutusV2.txInfoMint info) of
@@ -117,10 +112,10 @@ mkValidator pkh _ ctx =  traceIfFalse "invalid mint amount" checkNFTAmount &&
        _                -> False
 
     paidFee :: Bool
-    paidFee = ADA.getLovelace (ADA.fromValue (PSU.V2.valuePaidTo info pkh)) >= mintingFee
+    paidFee = ADA.getLovelace (ADA.fromValue (PSU.V2.valuePaidTo info $ feePKH cp)) >= mintFee cp
 
 
-policy :: PlutusV2.PubKeyHash -> PlutusV2.MintingPolicy
+policy :: ContractParam -> PlutusV2.MintingPolicy
 policy mp = PlutusV2.mkMintingPolicyScript $
     $$(PlutusTx.compile [|| wrap ||])
     `PlutusTx.applyCode`
@@ -128,11 +123,15 @@ policy mp = PlutusV2.mkMintingPolicyScript $
   where
     wrap mp' = PSU.V2.mkUntypedMintingPolicy $ mkValidator mp'
 
-
+script :: PubKeyHash -> PlutusV2.Script
+script pkh = PlutusV2.unMintingPolicyScript $ policy ContractParam
+    { vestPKH = "174f1166deeee0844aed52352db46f222b7d3caacf07e49ab18bf869"
+    , feePKH  = pkh
+    , mintFee = 10000000
+    }
 
 scriptSBSV2 :: PubKeyHash -> SBS.ShortByteString
-scriptSBSV2 pkh = SBS.toShort . LBS.toStrict $ serialise $ policy pkh
-
+scriptSBSV2 pkh = SBS.toShort . LBS.toStrict $ serialise $ script pkh
 
 serialisedScriptV2 :: PubKeyHash -> PlutusScript PlutusScriptV2
 serialisedScriptV2 pkh = PlutusScriptSerialised $ scriptSBSV2 pkh
