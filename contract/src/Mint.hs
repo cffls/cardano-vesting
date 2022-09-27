@@ -42,21 +42,13 @@ import           Prelude              (IO, putStrLn)
 import qualified Ledger.Ada as ADA
 import Plutus.V1.Ledger.Bytes (fromHex)
 
--- import Common (VestingDatum, beneficiary, deadline)
+import Common (VestingDatum(..))
 
-
-data VestingDatum = VestingDatum
-    { beneficiary :: PaymentPubKeyHash
-    , deadline    :: PlutusV2.POSIXTime
-    }
-
-PlutusTx.makeLift ''VestingDatum
-PlutusTx.unstableMakeIsData ''VestingDatum
 
 data ContractParam = ContractParam
-    { vestPKH :: PlutusV2.ValidatorHash
-    , feePKH  :: PlutusV2.PubKeyHash
-    , mintFee     :: Integer
+    { vestPKH   :: PlutusV2.ValidatorHash
+    , ownerPKH  :: PlutusV2.PubKeyHash
+    , mintFee   :: Integer
     }
 
 PlutusTx.makeLift ''ContractParam
@@ -65,10 +57,14 @@ PlutusTx.unstableMakeIsData ''ContractParam
 {-# INLINABLE mkValidator #-}
 mkValidator :: ContractParam -> BuiltinData -> PlutusV2.ScriptContext -> Bool
 mkValidator cp _ ctx =  traceIfFalse "insufficient fee" paidFee &&
-                         traceIfFalse "invalid mint amount" checkNFTAmount
+                        traceIfFalse "invalid mint amount" checkNFTAmount &&
+                        traceIfFalse "not signed by token issuer" signedByOwner
   where
     info :: PlutusV2.TxInfo
     info = PlutusV2.scriptContextTxInfo ctx
+
+    signedByOwner :: Bool
+    signedByOwner = PSU.V2.txSignedBy info $ ownerPKH cp
 
     extractFiniteUpper :: POSIXTimeRange -> Maybe POSIXTime
     extractFiniteUpper i = case ivTo i of
@@ -91,7 +87,7 @@ mkValidator cp _ ctx =  traceIfFalse "insufficient fee" paidFee &&
             PlutusV2.NoOutputDatum -> 0
             PlutusV2.OutputDatumHash _ -> 0
             PlutusV2.OutputDatum d' -> case PlutusTx.fromBuiltinData $ PlutusV2.getDatum d' of
-                Just VestingDatum{deadline} ->
+                Just VestingDatum {deadline} ->
                     case extractFiniteUpper $ PlutusV2.txInfoValidRange info of
                         Just upper -> capDays $ diffInDays (PlutusV2.getPOSIXTime upper) (PlutusV2.getPOSIXTime deadline)
                         Nothing -> 0
@@ -99,7 +95,7 @@ mkValidator cp _ ctx =  traceIfFalse "insufficient fee" paidFee &&
 
     getMaxMint :: [(PlutusV2.OutputDatum, PlutusV2.Value)] -> Integer
     getMaxMint outs = foldl (\acc (d, v) -> acc + getMaxMintFromOneOutput d v) 0 outs
-        where 
+        where
             getMaxMintFromOneOutput d v = getLockedDuration d * getLovelaceAmount v
             getLovelaceAmount v = ADA.getLovelace (ADA.fromValue v)
 
@@ -108,11 +104,11 @@ mkValidator cp _ ctx =  traceIfFalse "insufficient fee" paidFee &&
 
     checkNFTAmount :: Bool
     checkNFTAmount = case Value.flattenValue (PlutusV2.txInfoMint info) of
-       [(cs, tn', amt)] -> cs  == PSU.V2.ownCurrencySymbol ctx && tn' == PlutusV2.TokenName "" && amt <= maxMint
+       [(cs, tn', amt)] -> cs  == PSU.V2.ownCurrencySymbol ctx && tn' == PlutusV2.TokenName "LOCK" && amt <= maxMint
        _                -> False
 
     paidFee :: Bool
-    paidFee = ADA.getLovelace (ADA.fromValue (PSU.V2.valuePaidTo info $ feePKH cp)) >= mintFee cp
+    paidFee = ADA.getLovelace (ADA.fromValue (PSU.V2.valuePaidTo info $ ownerPKH cp)) >= mintFee cp
 
 
 policy :: ContractParam -> PlutusV2.MintingPolicy
@@ -125,8 +121,8 @@ policy mp = PlutusV2.mkMintingPolicyScript $
 
 script :: PubKeyHash -> PlutusV2.Script
 script pkh = PlutusV2.unMintingPolicyScript $ policy ContractParam
-    { vestPKH = "174f1166deeee0844aed52352db46f222b7d3caacf07e49ab18bf869"
-    , feePKH  = pkh
+    { vestPKH = "ab4fde3391d3e744c9a49d8a1a0c216e4ec41e415f9c13b6673210bf"
+    , ownerPKH  = pkh
     , mintFee = 10000000
     }
 

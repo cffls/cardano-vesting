@@ -40,11 +40,11 @@ import           Prelude              (IO, putStrLn)
 import qualified Ledger.Ada as PlutusV2
 import Plutus.V1.Ledger.Bytes (fromHex)
 
-import Common (VestingDatum, beneficiary, deadline)
+import Common (VestingDatum(..))
 
 
 vestingFee :: Integer
-vestingFee = 1500000
+vestingFee = 2000000
 
 
 {-# INLINABLE mkValidator #-}

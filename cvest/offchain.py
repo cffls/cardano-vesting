@@ -6,13 +6,18 @@ from typing import List
 
 from pycardano import (
     Address,
+    AlonzoMetadata,
+    AuxiliaryData,
     BlockFrostChainContext,
     ChainContext,
+    Metadata,
     MultiAsset,
     Network,
     PlutusData,
     Redeemer,
     RedeemerTag,
+    PaymentSigningKey,
+    PaymentVerificationKey,
     Transaction,
     TransactionBuilder,
     TransactionOutput,
@@ -22,7 +27,7 @@ from pycardano import (
     min_lovelace_post_alonzo
 )
 
-from cvest.datum import new_vesting_datum
+from cvest.datum import VestingDatum, new_vesting_datum
 
 
 def get_env_var(key):
@@ -32,8 +37,6 @@ def get_env_var(key):
     return val
 
 
-fee_address = Address.from_primitive(get_env_var("FEE_ADDRESS"))
-
 with open(get_env_var("VEST_UTXO_PATH"), "rb") as f:
     vest_utxo = pickle.load(f)
 
@@ -41,11 +44,26 @@ with open(get_env_var("MINT_UTXO_PATH"), "rb") as f:
     mint_utxo = pickle.load(f)
 
 NETWORK = Network.TESTNET
+MINT_FEE = 10000000
+MAX_MINT_SPAN = 3650
+
+fee_address = Address.from_primitive(get_env_var("FEE_ADDRESS"))
+
+payment_pkh = script_hash(vest_utxo.output.script)
+
+owner_skey = PaymentSigningKey.load("keys/payment.skey")
+
+owner_vkey = PaymentVerificationKey.from_signing_key(owner_skey)
+
+script_address = Address(
+    payment_part=payment_pkh,
+    network=NETWORK
+)
 
 context = BlockFrostChainContext(
     get_env_var("BLOCKFROST_PROJECT_ID"),
     network=NETWORK,
-    base_url="https://cardano-preview.blockfrost.io/api"
+    base_url="https://cardano-preprod.blockfrost.io/api"
 )
 
 
@@ -61,16 +79,6 @@ def create_grant_tx(
     tx_builder = TransactionBuilder(context)
     tx_builder.add_input_address(sender)
 
-    payment_pkh = script_hash(vest_utxo.output.script)
-
-    print(payment_pkh)
-
-    output_address = Address(
-        payment_part=payment_pkh,
-        staking_part=beneficiary.staking_part or sender.staking_part,
-        network=sender.network,
-    )
-
     ttl = 1200  # 1200 seconds
 
     tx_builder.ttl = context.last_block_slot + ttl
@@ -79,33 +87,61 @@ def create_grant_tx(
 
     for deadline, amount in vals:
         datum = new_vesting_datum(beneficiary, deadline)
-        tx_output = TransactionOutput(output_address, amount, datum=datum)
+        tx_output = TransactionOutput(script_address, amount, datum=datum)
         tx_builder.add_output(tx_output)
 
         delta = deadline - datetime.now() - timedelta(seconds=ttl)
-        mint_amount += delta.days * amount
+        mint_amount += min(max(delta.days, 0), MAX_MINT_SPAN) * amount
 
-    if mint:
-        print(script_hash(mint_utxo.output.script))
+    if mint and mint_amount > 0:
         tx_builder.add_minting_script(mint_utxo, Redeemer(RedeemerTag.MINT, data=1))
         tokens = MultiAsset.from_primitive({
-            script_hash(mint_utxo.output.script).payload: {b"": mint_amount}
+            script_hash(mint_utxo.output.script).payload: {b"LOCK": mint_amount}
         })
 
         tx_builder.mint = tokens
 
-        mint_output = TransactionOutput(sender, Value(1000000, tokens))
+        mint_output = TransactionOutput(sender, Value(0, tokens))
         mint_output.amount.coin = min_lovelace_post_alonzo(mint_output, context)
         tx_builder.add_output(mint_output)
 
-        mint_fee_output = TransactionOutput(fee_address, 10000000-1)
+        mint_fee_output = TransactionOutput(fee_address, MINT_FEE)
         tx_builder.add_output(mint_fee_output)
+        tx_builder.required_signers = [owner_vkey.hash()]
 
-    return tx_builder.build_and_sign([])
+    metadata = {
+        20: {
+            script_hash(mint_utxo.output.script).payload.hex(): {
+                b"LOCK".hex(): {
+                    "decimals": 6,
+                    "desc": "LOCK Token",
+                    "ticker": "LOCK",
+                    "version": "1.0"
+                }
+            }
+        }
+    }
+
+    # Place metadata in AuxiliaryData, the format acceptable by a transaction.
+    auxiliary_data = AuxiliaryData(AlonzoMetadata(metadata=Metadata(metadata)))
+    tx_builder.auxiliary_data = auxiliary_data
+
+    return tx_builder.build_and_sign([owner_skey], sender, merge_change=True)
 
 
-def vest(beneficiary: Address, script_utxo: UTxO, context: ChainContext):
+def get_pending(beneficiary: Address) -> List[UTxO]:
     """
-    Spend vestable utxos
+    Get unvested utxos for a beneficiary.
     """
-    pass
+    utxo = context.api.get_utxos(address=script_address)
+    results = []
+
+    for u in utxo:
+        if u.datum is not None:
+            datum = VestingDatum.from_primitive(u.datum.cbor)
+            if datum.beneficiary == beneficiary.payment_part.payload:
+                results.append(u)
+
+    return results
+
+

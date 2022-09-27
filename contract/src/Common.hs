@@ -14,9 +14,7 @@
 {-# LANGUAGE TypeOperators         #-}
 
 module Common 
-    (VestingDatum,
-     beneficiary,
-     deadline)
+    (VestingDatum(..))
 where
 
 import           Ledger               hiding (singleton)
@@ -31,4 +29,5 @@ data VestingDatum = VestingDatum
     , deadline    :: PlutusV2.POSIXTime
     }
 
+PlutusTx.makeLift ''VestingDatum
 PlutusTx.unstableMakeIsData ''VestingDatum
