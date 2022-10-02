@@ -43,27 +43,44 @@ import Plutus.V1.Ledger.Bytes (fromHex)
 import Common (VestingDatum(..))
 
 
-vestingFee :: Integer
-vestingFee = 2000000
+minVestFee :: Integer
+minVestFee = 0
 
 
 {-# INLINABLE mkValidator #-}
 mkValidator :: PubKeyHash -> VestingDatum -> () -> PlutusV2.ScriptContext -> Bool
-mkValidator pkh dat () ctx = traceIfFalse "beneficiary's signature missing" signedByBeneficiary &&
-                         traceIfFalse "deadline not reached" deadlineReached &&
-                         traceIfFalse "insufficient fee" paidFee
+mkValidator pkh dat () ctx = traceIfFalse "Fund sent to wrong party or insufficient fund is sent" spentCorrectly &&
+                         traceIfFalse "insufficient fee" paidVestFee
   where
     info :: PlutusV2.TxInfo
     info = PlutusV2.scriptContextTxInfo ctx
 
-    signedByBeneficiary :: Bool
-    signedByBeneficiary = PSU.V2.txSignedBy info $ unPaymentPubKeyHash $ beneficiary dat
+    paidVestFee :: Bool
+    paidVestFee = vestFee >= minVestFee
+
+    spentCorrectly :: Bool
+    spentCorrectly = paidBeneficiary || granterCancelled
+
+    paidBeneficiary :: Bool
+    paidBeneficiary = amtSentToBeneficiary >= minVestValue dat && deadlineReached
+
+    granterCancelled :: Bool
+    granterCancelled = amtSentToGranter >= minVestValue dat && cancellable dat > 0 && not deadlineReached
 
     deadlineReached :: Bool
     deadlineReached = contains (from $ deadline dat) $ PSU.V2.txInfoValidRange info
 
-    paidFee :: Bool
-    paidFee = PlutusV2.getLovelace (PlutusV2.fromValue (PSU.V2.valuePaidTo info pkh)) >= vestingFee
+    vestFee :: Integer
+    vestFee = amtSentTo pkh
+
+    amtSentToBeneficiary :: Integer
+    amtSentToBeneficiary = amtSentTo $ beneficiary dat
+
+    amtSentToGranter :: Integer
+    amtSentToGranter = amtSentTo $ granter dat
+
+    amtSentTo :: PubKeyHash -> Integer
+    amtSentTo pkh' = PlutusV2.getLovelace (PlutusV2.fromValue (PSU.V2.valuePaidTo info pkh'))
 
 
 validator :: PubKeyHash -> PlutusV2.Validator

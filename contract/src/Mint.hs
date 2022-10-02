@@ -57,7 +57,7 @@ PlutusTx.unstableMakeIsData ''ContractParam
 {-# INLINABLE mkValidator #-}
 mkValidator :: ContractParam -> BuiltinData -> PlutusV2.ScriptContext -> Bool
 mkValidator cp _ ctx =  traceIfFalse "insufficient fee" paidFee &&
-                        traceIfFalse "invalid mint amount" checkNFTAmount &&
+                        traceIfFalse "invalid mint amount" checkMintAmount &&
                         traceIfFalse "not signed by token issuer" signedByOwner
   where
     info :: PlutusV2.TxInfo
@@ -87,11 +87,16 @@ mkValidator cp _ ctx =  traceIfFalse "insufficient fee" paidFee &&
             PlutusV2.NoOutputDatum -> 0
             PlutusV2.OutputDatumHash _ -> 0
             PlutusV2.OutputDatum d' -> case PlutusTx.fromBuiltinData $ PlutusV2.getDatum d' of
-                Just VestingDatum {deadline} ->
+                Just VestingDatum {deadline, cancellable} ->
                     case extractFiniteUpper $ PlutusV2.txInfoValidRange info of
-                        Just upper -> capDays $ diffInDays (PlutusV2.getPOSIXTime upper) (PlutusV2.getPOSIXTime deadline)
+                        Just upper -> setToZeroIfCancellable cancellable $ capDays $ diffInDays (PlutusV2.getPOSIXTime upper) (PlutusV2.getPOSIXTime deadline)
                         Nothing -> 0
                 Nothing -> 0
+
+                where setToZeroIfCancellable :: Integer -> Integer -> Integer
+                      setToZeroIfCancellable cancellable' days
+                          | cancellable' > 0 = 0
+                          | otherwise = days
 
     getMaxMint :: [(PlutusV2.OutputDatum, PlutusV2.Value)] -> Integer
     getMaxMint outs = foldl (\acc (d, v) -> acc + getMaxMintFromOneOutput d v) 0 outs
@@ -102,8 +107,8 @@ mkValidator cp _ ctx =  traceIfFalse "insufficient fee" paidFee &&
     maxMint :: Integer
     maxMint = getMaxMint $ PSU.V2.scriptOutputsAt (vestPKH cp) info
 
-    checkNFTAmount :: Bool
-    checkNFTAmount = case Value.flattenValue (PlutusV2.txInfoMint info) of
+    checkMintAmount :: Bool
+    checkMintAmount = case Value.flattenValue (PlutusV2.txInfoMint info) of
        [(cs, tn', amt)] -> cs  == PSU.V2.ownCurrencySymbol ctx && tn' == PlutusV2.TokenName "LOCK" && amt <= maxMint
        _                -> False
 
@@ -121,9 +126,9 @@ policy mp = PlutusV2.mkMintingPolicyScript $
 
 script :: PubKeyHash -> PlutusV2.Script
 script pkh = PlutusV2.unMintingPolicyScript $ policy ContractParam
-    { vestPKH = "ab4fde3391d3e744c9a49d8a1a0c216e4ec41e415f9c13b6673210bf"
+    { vestPKH = "9fac904b6cac5b45b2c8620894d188eee91401e8d3869e3756660f12"
     , ownerPKH  = pkh
-    , mintFee = 10000000
+    , mintFee = 8000000
     }
 
 scriptSBSV2 :: PubKeyHash -> SBS.ShortByteString

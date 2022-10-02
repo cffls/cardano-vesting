@@ -7,7 +7,7 @@ license = "Apache 2.0"
 
 [tool.poetry.dependencies]
 python = "^3.8"
-pycardano = "^0.6.1"
+pycardano = "0.6.3"
 isort = "^5.10.1"
 black = "^22.8.0"
 

@@ -4,6 +4,8 @@ import pickle
 from datetime import datetime, timedelta
 from typing import List
 
+import cbor2
+
 from pycardano import (
     Address,
     AlonzoMetadata,
@@ -71,6 +73,8 @@ def create_grant_tx(
     sender: Address,
     beneficiary: Address,
     vals: List[tuple[datetime, int]],
+    cancellable: bool = False,
+    pay_fee_from_vest: bool = False,
     mint: bool = True,
 ) -> Transaction:
     """
@@ -86,14 +90,18 @@ def create_grant_tx(
     mint_amount = 0
 
     for deadline, amount in vals:
-        datum = new_vesting_datum(beneficiary, deadline)
+        if pay_fee_from_vest:
+            min_vest_amount = amount - 500000
+            datum = new_vesting_datum(beneficiary, sender, cancellable, deadline, min_vest_amount)
+        else:
+            datum = new_vesting_datum(beneficiary, sender, cancellable, deadline, amount)
         tx_output = TransactionOutput(script_address, amount, datum=datum)
         tx_builder.add_output(tx_output)
 
         delta = deadline - datetime.now() - timedelta(seconds=ttl)
         mint_amount += min(max(delta.days, 0), MAX_MINT_SPAN) * amount
 
-    if mint and mint_amount > 0:
+    if mint and mint_amount > 0 and not cancellable:
         tx_builder.add_minting_script(mint_utxo, Redeemer(RedeemerTag.MINT, data=1))
         tokens = MultiAsset.from_primitive({
             script_hash(mint_utxo.output.script).payload: {b"LOCK": mint_amount}
@@ -129,19 +137,26 @@ def create_grant_tx(
     return tx_builder.build_and_sign([owner_skey], sender, merge_change=True)
 
 
+def typed_datum(utxo: UTxO) -> UTxO:
+    """
+    Decorate a utxo with VestingDatum.
+    """
+    if utxo.output.datum is not None:
+        datum = VestingDatum.from_primitive(cbor2.loads(utxo.output.datum.cbor))
+        utxo.output.datum = datum
+    return utxo
+
+
 def get_pending(beneficiary: Address) -> List[UTxO]:
     """
     Get unvested utxos for a beneficiary.
     """
-    utxo = context.api.get_utxos(address=script_address)
+    utxo = context.utxos(str(script_address))
     results = []
 
     for u in utxo:
-        if u.datum is not None:
-            datum = VestingDatum.from_primitive(u.datum.cbor)
-            if datum.beneficiary == beneficiary.payment_part.payload:
-                results.append(u)
+        typed_datum(u)
+        if u.output.datum.beneficiary == beneficiary.payment_part.payload:
+            results.append(u)
 
     return results
-
-

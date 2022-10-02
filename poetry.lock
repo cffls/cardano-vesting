@@ -67,7 +67,7 @@ test = ["pytest", "pytest-cov"]
 
 [[package]]
 name = "certifi"
-version = "2022.9.14"
+version = "2022.9.24"
 description = "Python package for providing Mozilla's CA Bundle."
 category = "main"
 optional = false
@@ -246,7 +246,7 @@ python-versions = "*"
 
 [[package]]
 name = "pycardano"
-version = "0.6.2"
+version = "0.6.3"
 description = "A Cardano library in Python"
 category = "main"
 optional = false
@@ -367,7 +367,7 @@ test = ["websockets"]
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.8"
-content-hash = "f5b46bfbe7594969eb3a02b09dfdc747e20a6553d457f511b8fd04b1e57dea93"
+content-hash = "64f04a7e4784b44396f0b9d37d5a80d926d412e354c577145ca3a123c854fddd"
 
 [metadata.files]
 asn1crypto = [
@@ -438,8 +438,8 @@ cbor2 = [
     {file = "cbor2-5.4.3.tar.gz", hash = "sha256:62b863c5ee6ced4032afe948f3c1484f375550995d3b8498145237fe28e546c2"},
 ]
 certifi = [
-    {file = "certifi-2022.9.14-py3-none-any.whl", hash = "sha256:e232343de1ab72c2aa521b625c80f699e356830fd0e2c620b465b304b17b0516"},
-    {file = "certifi-2022.9.14.tar.gz", hash = "sha256:36973885b9542e6bd01dea287b2b4b3b21236307c56324fcc3f1160f2d655ed5"},
+    {file = "certifi-2022.9.24-py3-none-any.whl", hash = "sha256:90c1a32f1d68f940488354e36370f6cca89f0f106db09518524c88d6ed83f382"},
+    {file = "certifi-2022.9.24.tar.gz", hash = "sha256:0d9c601124e5a6ba9712dbc60d9c53c21e34f5f641fe83002317394311bdce14"},
 ]
 certvalidator = [
     {file = "certvalidator-0.11.1-py2.py3-none-any.whl", hash = "sha256:77520b269f516d4fb0902998d5bd0eb3727fe153b659aa1cb828dcf12ea6b8de"},
@@ -588,8 +588,8 @@ pprintpp = [
     {file = "pprintpp-0.4.0.tar.gz", hash = "sha256:ea826108e2c7f49dc6d66c752973c3fc9749142a798d6b254e1e301cfdbc6403"},
 ]
 pycardano = [
-    {file = "pycardano-0.6.2-py3-none-any.whl", hash = "sha256:e4e17ea9d4b9a07d13d450a2ac7999ce53a5ce5f9510e21852e469f29a65a38b"},
-    {file = "pycardano-0.6.2.tar.gz", hash = "sha256:5bcb17579c168242b60ec8f8010d7082bf0c73f570c020777c2ea114bdda243a"},
+    {file = "pycardano-0.6.3-py3-none-any.whl", hash = "sha256:e68038d4c40b405891a1d6cd08c388d55a13ef1bf0f52e0378d06691e707af55"},
+    {file = "pycardano-0.6.3.tar.gz", hash = "sha256:f28abf08d59b8b17684ec577185d914eb1606eba50efec327262ccd957e9df09"},
 ]
 pycparser = [
     {file = "pycparser-2.21-py2.py3-none-any.whl", hash = "sha256:8ee45429555515e1f6b185e78100aea234072576aa43ab53aefcae078162fca9"},

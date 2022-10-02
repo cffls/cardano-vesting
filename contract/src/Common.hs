@@ -18,6 +18,7 @@ module Common
 where
 
 import           Ledger               hiding (singleton)
+import           PlutusTx.Prelude     hiding (Semigroup(..))
 
 import qualified Plutus.V2.Ledger.Api           as PlutusV2
 
@@ -25,8 +26,11 @@ import qualified PlutusTx
 
 
 data VestingDatum = VestingDatum
-    { beneficiary :: PaymentPubKeyHash
-    , deadline    :: PlutusV2.POSIXTime
+    { beneficiary   :: PubKeyHash
+    , granter       :: PubKeyHash
+    , cancellable   :: Integer
+    , deadline      :: PlutusV2.POSIXTime
+    , minVestValue  :: Integer
     }
 
 PlutusTx.makeLift ''VestingDatum
