@@ -227,9 +227,9 @@ def cancel(granter: Address, utxos: List[UTxO]) -> Transaction:
 
     tx_builder.add_output(TransactionOutput(granter, sum([u.output.amount.coin for u in utxos])))
 
+    # Require granter to sign this transaction.
     tx_builder.required_signers = [granter.payment_part.payload]
 
-    # Sign with owner's signing key so the collateral can be spent.
     tx = tx_builder.build_and_sign([], fee_address, merge_change=True)
 
     return tx
