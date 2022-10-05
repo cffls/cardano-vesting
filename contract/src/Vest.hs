@@ -50,7 +50,7 @@ minVestFee = 0
 {-# INLINABLE mkValidator #-}
 mkValidator :: PubKeyHash -> VestingDatum -> () -> PlutusV2.ScriptContext -> Bool
 mkValidator pkh dat () ctx = traceIfFalse "Fund sent to wrong party or insufficient fund is sent" spentCorrectly &&
-                         traceIfFalse "insufficient fee" paidVestFee
+                        traceIfFalse "insufficient fee" paidVestFee
   where
     info :: PlutusV2.TxInfo
     info = PlutusV2.scriptContextTxInfo ctx
@@ -59,13 +59,16 @@ mkValidator pkh dat () ctx = traceIfFalse "Fund sent to wrong party or insuffici
     paidVestFee = vestFee >= minVestFee
 
     spentCorrectly :: Bool
-    spentCorrectly = paidBeneficiary || granterCancelled
+    spentCorrectly = paidBeneficiary || (granterCancelled && granterSigned)
 
     paidBeneficiary :: Bool
-    paidBeneficiary = amtSentToBeneficiary >= minVestValue dat && deadlineReached
+    paidBeneficiary = amtSentToBeneficiary >= minVestValue dat && deadlineReached && onlyOneInput
 
     granterCancelled :: Bool
     granterCancelled = amtSentToGranter >= minVestValue dat && cancellable dat > 0 && not deadlineReached
+
+    granterSigned :: Bool
+    granterSigned = PSU.V2.txSignedBy info $ granter dat
 
     deadlineReached :: Bool
     deadlineReached = contains (from $ deadline dat) $ PSU.V2.txInfoValidRange info
@@ -81,6 +84,12 @@ mkValidator pkh dat () ctx = traceIfFalse "Fund sent to wrong party or insuffici
 
     amtSentTo :: PubKeyHash -> Integer
     amtSentTo pkh' = PlutusV2.getLovelace (PlutusV2.fromValue (PSU.V2.valuePaidTo info pkh'))
+
+    onlyOneInput :: Bool
+    onlyOneInput = inputCounts == 1
+
+    inputCounts :: Integer
+    inputCounts = length $ PSU.V2.txInfoInputs info
 
 
 validator :: PubKeyHash -> PlutusV2.Validator

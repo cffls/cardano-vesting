@@ -74,13 +74,15 @@ def create_grant_tx(
     beneficiary: Address,
     vals: List[tuple[datetime, int]],
     cancellable: bool = False,
-    pay_fee_from_vest: bool = False,
+    pay_fee_from_vest: bool = True,
     mint: bool = True,
 ) -> Transaction:
     """
     Create an unsigned transaction that generates UTxOs that can be spent by the beneficiary after specific deadlines.
     """
     tx_builder = TransactionBuilder(context)
+    tx_builder.execution_memory_buffer = 0.5
+    tx_builder.execution_step_buffer = 0.5
     tx_builder.add_input_address(sender)
 
     ttl = 1200  # 1200 seconds
@@ -143,6 +145,7 @@ def typed_datum(utxo: UTxO) -> UTxO:
     """
     if utxo.output.datum is not None:
         datum = VestingDatum.from_primitive(cbor2.loads(utxo.output.datum.cbor))
+        assert datum.to_cbor("bytes") == utxo.output.datum.cbor
         utxo.output.datum = datum
     return utxo
 
@@ -160,3 +163,73 @@ def get_pending(beneficiary: Address) -> List[UTxO]:
             results.append(u)
 
     return results
+
+
+def vestable(utxo) -> bool:
+    """
+    Check if a utxo is vestable.
+    """
+    if utxo.output.datum is None:
+        return False
+
+    return utxo.output.datum.deadline_in_datetime() <= datetime.now()
+
+
+def cancellable(utxo) -> bool:
+    """
+    Check if a utxo is cancellable.
+    """
+    if utxo.output.datum is None:
+        return False
+
+    return utxo.output.datum.deadline_in_datetime() > datetime.now() and utxo.output.datum.cancellable
+
+
+def vest(beneficiary: Address, utxo: UTxO) -> Transaction:
+    """
+    Vest a utxo.
+    """
+
+    tx_builder = TransactionBuilder(context)
+
+    tx_builder.execution_memory_buffer = 0.3
+    tx_builder.execution_step_buffer = 0.3
+
+    tx_builder.add_script_input(utxo, vest_utxo, None, Redeemer(RedeemerTag.SPEND, data=PlutusData()))
+
+    tx_builder.ttl = context.last_block_slot + 1200
+    tx_builder.validity_start = context.last_block_slot
+
+    tx_builder.add_output(TransactionOutput(beneficiary, utxo.output.datum.min_vest_amount))
+
+    # Sign with owner's signing key so the collateral can be spent.
+    tx = tx_builder.build_and_sign([owner_skey], fee_address, merge_change=True)
+
+    return tx
+
+
+def cancel(granter: Address, utxos: List[UTxO]) -> Transaction:
+    """
+    Cancel a list of locked but cancellable funds.
+    """
+    tx_builder = TransactionBuilder(context)
+
+    tx_builder.execution_memory_buffer = 0.3
+    tx_builder.execution_step_buffer = 0.3
+
+    for utxo in utxos:
+        tx_builder.add_script_input(utxo, vest_utxo, None, Redeemer(RedeemerTag.SPEND, data=PlutusData()))
+
+    tx_builder.ttl = context.last_block_slot + 1200
+    tx_builder.validity_start = context.last_block_slot
+
+    tx_builder.add_input_address(granter)
+
+    tx_builder.add_output(TransactionOutput(granter, sum([u.output.amount.coin for u in utxos])))
+
+    tx_builder.required_signers = [granter.payment_part.payload]
+
+    # Sign with owner's signing key so the collateral can be spent.
+    tx = tx_builder.build_and_sign([], fee_address, merge_change=True)
+
+    return tx

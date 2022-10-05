@@ -12,6 +12,9 @@ class VestingDatum(PlutusData):
     deadline: int
     min_vest_amount: int
 
+    def deadline_in_datetime(self) -> datetime:
+        return datetime.fromtimestamp(self.deadline // 1000)
+
 
 def new_vesting_datum(beneficiary: Address,
                       granter: Address,
