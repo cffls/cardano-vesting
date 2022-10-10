@@ -26,11 +26,12 @@ import qualified PlutusTx
 
 
 data VestingDatum = VestingDatum
-    { beneficiary   :: PubKeyHash
-    , granter       :: PubKeyHash
-    , cancellable   :: Integer
-    , deadline      :: PlutusV2.POSIXTime
-    , minVestValue  :: Integer
+    { beneficiary         :: PubKeyHash
+    , beneficiaryScript   :: ValidatorHash
+    , granter             :: PubKeyHash
+    , cancellable         :: Integer
+    , deadline            :: PlutusV2.POSIXTime
+    , minVestValue        :: Integer
     }
 
 PlutusTx.makeLift ''VestingDatum

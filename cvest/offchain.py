@@ -2,16 +2,16 @@ import os
 import pickle
 
 from datetime import datetime, timedelta
-from typing import List
+from typing import List, Union
 
 import cbor2
 
+from cachetools import cached, TTLCache
 from pycardano import (
     Address,
     AlonzoMetadata,
     AuxiliaryData,
     BlockFrostChainContext,
-    ChainContext,
     Metadata,
     MultiAsset,
     Network,
@@ -57,6 +57,8 @@ owner_skey = PaymentSigningKey.load("keys/payment.skey")
 
 owner_vkey = PaymentVerificationKey.from_signing_key(owner_skey)
 
+owner_addr = Address(owner_vkey.hash(), network=NETWORK)
+
 script_address = Address(
     payment_part=payment_pkh,
     network=NETWORK
@@ -81,8 +83,6 @@ def create_grant_tx(
     Create an unsigned transaction that generates UTxOs that can be spent by the beneficiary after specific deadlines.
     """
     tx_builder = TransactionBuilder(context)
-    tx_builder.execution_memory_buffer = 0.5
-    tx_builder.execution_step_buffer = 0.5
     tx_builder.add_input_address(sender)
 
     ttl = 1200  # 1200 seconds
@@ -119,22 +119,22 @@ def create_grant_tx(
         tx_builder.add_output(mint_fee_output)
         tx_builder.required_signers = [owner_vkey.hash()]
 
-    metadata = {
-        20: {
-            script_hash(mint_utxo.output.script).payload.hex(): {
-                b"LOCK".hex(): {
-                    "decimals": 6,
-                    "desc": "LOCK Token",
-                    "ticker": "LOCK",
-                    "version": "1.0"
+        metadata = {
+            20: {
+                script_hash(mint_utxo.output.script).payload.hex(): {
+                    b"LOCK".hex(): {
+                        "decimals": 6,
+                        "desc": "LOCK Token",
+                        "ticker": "LOCK",
+                        "version": "1.0"
+                    }
                 }
             }
         }
-    }
 
-    # Place metadata in AuxiliaryData, the format acceptable by a transaction.
-    auxiliary_data = AuxiliaryData(AlonzoMetadata(metadata=Metadata(metadata)))
-    tx_builder.auxiliary_data = auxiliary_data
+        # Place metadata in AuxiliaryData, the format acceptable by a transaction.
+        auxiliary_data = AuxiliaryData(AlonzoMetadata(metadata=Metadata(metadata)))
+        tx_builder.auxiliary_data = auxiliary_data
 
     return tx_builder.build_and_sign([owner_skey], sender, merge_change=True)
 
@@ -144,22 +144,64 @@ def typed_datum(utxo: UTxO) -> UTxO:
     Decorate a utxo with VestingDatum.
     """
     if utxo.output.datum is not None:
-        datum = VestingDatum.from_primitive(cbor2.loads(utxo.output.datum.cbor))
-        assert datum.to_cbor("bytes") == utxo.output.datum.cbor
+        try:
+            datum = VestingDatum.from_primitive(cbor2.loads(utxo.output.datum.cbor))
+        except Exception:
+            datum = None
         utxo.output.datum = datum
     return utxo
 
 
-def get_pending(beneficiary: Address) -> List[UTxO]:
+@cached(cache=TTLCache(maxsize=1, ttl=20))
+def get_script_utxos() -> List[UTxO]:
     """
-    Get unvested utxos for a beneficiary.
+    Get all utxos sitting in the script address.
     """
     utxo = context.utxos(str(script_address))
     results = []
 
     for u in utxo:
         typed_datum(u)
-        if u.output.datum.beneficiary == beneficiary.payment_part.payload:
+        if u.output.datum is not None:
+            results.append(u)
+
+    return results
+
+
+def _to_payment_part_set(addresses: Union[Address, List[Address]]) -> set[bytes]:
+    if isinstance(addresses, Address):
+        addresses = [addresses]
+
+    return {a.payment_part.payload for a in addresses}
+
+
+def get_pending(beneficiaries: Union[Address, List[Address]]) -> List[UTxO]:
+    """
+    Get unvested utxos for a beneficiary.
+    """
+    payment_part_set = _to_payment_part_set(beneficiaries)
+
+    utxos = get_script_utxos()
+    results = []
+
+    for u in utxos:
+        if u.output.datum.beneficiary in payment_part_set or u.output.datum.beneficiary_script in payment_part_set:
+            results.append(u)
+
+    return results
+
+
+def get_grants(granters: Union[Address, List[Address]]) -> List[UTxO]:
+    """
+    Get unvested utxos granted by a granter.
+    """
+    payment_part_set = _to_payment_part_set(granters)
+
+    utxos = get_script_utxos()
+    results = []
+
+    for u in utxos:
+        if u.output.datum.granter in payment_part_set:
             results.append(u)
 
     return results
@@ -192,8 +234,8 @@ def vest(beneficiary: Address, utxo: UTxO) -> Transaction:
 
     tx_builder = TransactionBuilder(context)
 
-    tx_builder.execution_memory_buffer = 0.3
-    tx_builder.execution_step_buffer = 0.3
+    # tx_builder.execution_memory_buffer = 0.3
+    # tx_builder.execution_step_buffer = 0.3
 
     tx_builder.add_script_input(utxo, vest_utxo, None, Redeemer(RedeemerTag.SPEND, data=PlutusData()))
 
@@ -203,7 +245,7 @@ def vest(beneficiary: Address, utxo: UTxO) -> Transaction:
     tx_builder.add_output(TransactionOutput(beneficiary, utxo.output.datum.min_vest_amount))
 
     # Sign with owner's signing key so the collateral can be spent.
-    tx = tx_builder.build_and_sign([owner_skey], fee_address, merge_change=True)
+    tx = tx_builder.build_and_sign([owner_skey], beneficiary, merge_change=True, collateral_change_address=owner_addr)
 
     return tx
 
@@ -214,8 +256,8 @@ def cancel(granter: Address, utxos: List[UTxO]) -> Transaction:
     """
     tx_builder = TransactionBuilder(context)
 
-    tx_builder.execution_memory_buffer = 0.3
-    tx_builder.execution_step_buffer = 0.3
+    # tx_builder.execution_memory_buffer = 0.5
+    # tx_builder.execution_step_buffer = 0.5
 
     for utxo in utxos:
         tx_builder.add_script_input(utxo, vest_utxo, None, Redeemer(RedeemerTag.SPEND, data=PlutusData()))
@@ -230,6 +272,6 @@ def cancel(granter: Address, utxos: List[UTxO]) -> Transaction:
     # Require granter to sign this transaction.
     tx_builder.required_signers = [granter.payment_part.payload]
 
-    tx = tx_builder.build_and_sign([], fee_address, merge_change=True)
+    tx = tx_builder.build_and_sign([], granter, merge_change=True, collateral_change_address=granter)
 
     return tx

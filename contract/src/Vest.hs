@@ -62,10 +62,10 @@ mkValidator pkh dat () ctx = traceIfFalse "Fund sent to wrong party or insuffici
     spentCorrectly = paidBeneficiary || (granterCancelled && granterSigned)
 
     paidBeneficiary :: Bool
-    paidBeneficiary = amtSentToBeneficiary >= minVestValue dat && deadlineReached && onlyOneInput
+    paidBeneficiary = (amtSentToBeneficiaryScript >= minValue || amtSentToBeneficiary >= minValue) && deadlineReached && onlyOneInput
 
     granterCancelled :: Bool
-    granterCancelled = amtSentToGranter >= minVestValue dat && cancellable dat > 0 && not deadlineReached
+    granterCancelled = amtSentToGranter >= minValue && cancellable dat > 0 && not deadlineReached
 
     granterSigned :: Bool
     granterSigned = PSU.V2.txSignedBy info $ granter dat
@@ -79,6 +79,9 @@ mkValidator pkh dat () ctx = traceIfFalse "Fund sent to wrong party or insuffici
     amtSentToBeneficiary :: Integer
     amtSentToBeneficiary = amtSentTo $ beneficiary dat
 
+    amtSentToBeneficiaryScript :: Integer
+    amtSentToBeneficiaryScript = PlutusV2.getLovelace (PlutusV2.fromValue (PSU.V2.valueLockedBy info $ beneficiaryScript dat))
+
     amtSentToGranter :: Integer
     amtSentToGranter = amtSentTo $ granter dat
 
@@ -90,6 +93,9 @@ mkValidator pkh dat () ctx = traceIfFalse "Fund sent to wrong party or insuffici
 
     inputCounts :: Integer
     inputCounts = length $ PSU.V2.txInfoInputs info
+
+    minValue :: Integer
+    minValue = minVestValue dat
 
 
 validator :: PubKeyHash -> PlutusV2.Validator
