@@ -10,7 +10,7 @@ from pycardano import (
 
 import cvest.offchain as oc
 
-app = Flask(__name__)
+app = Flask(__name__, template_folder='../frontend', static_folder='../frontend/static')
 
 
 def format_utxo(utxo: UTxO):
@@ -43,3 +43,8 @@ def get_vests():
     vests = oc.get_pending(addresses)
 
     return {"results": [format_utxo(vest) for vest in vests]}
+
+
+@app.route("/")
+def home_page():
+    return render_template("index.html")
