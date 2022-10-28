@@ -1,9 +1,8 @@
 /*
 Recipient app structure
 */
-var recipientItems = [];
 
-class RecipientList extends React.Component {
+class PendingRecipientList extends React.Component {
   render () {
     var items = this.props.items.map((item, index) => {
       return (
@@ -18,13 +17,85 @@ class RecipientList extends React.Component {
             <th style={{width: "5%"}} scope="col">#</th>
             <th style={{width: "40%"}} scope="col">Recipient</th>
             <th style={{width: "20%"}} scope="col">Vest Amount</th>
-            <th style={{width: "25%"}} scope="col">Vest date</th>
+            <th style={{width: "25%"}} scope="col">Vest date (UTC)</th>
             <th></th>
           </tr>
         </thead>
         <tbody>
         {items}
         <RecipientForm items={this.props.items} addItem={this.props.addItem} />
+        </tbody>
+      </table>
+    );
+  }
+}
+
+class VestList extends React.Component {
+  render () {
+    var items = this.props.items.map((item, index) => {
+      return (
+        <VestListItem key={index} item={item} index={index}/>
+      );
+    });
+
+    return (
+      <table className="table">
+        <thead>
+          <tr>
+            <th style={{width: "5%"}} scope="col">#</th>
+            <th style={{width: "10%"}} scope="col">Amount</th>
+            <th style={{width: "20%"}} scope="col">Vest date (UTC)</th>
+            <th style={{width: "30%"}} scope="col">Granter</th>
+            <th style={{width: "12%"}} scope="col">Cancellable</th>
+          </tr>
+        </thead>
+        <tbody>
+        {items}
+        </tbody>
+      </table>
+    );
+  }
+}
+
+class VestListItem extends React.Component {
+  constructor(props) {
+    super(props);
+  }
+
+  render () {
+    return(
+      <tr>
+        <th scope="row">{this.props.index+1}</th>
+        <td >{parseFloat(this.props.item.amount)/1000000} ₳</td>
+        <td >{this.props.item.deadline}</td>
+        <td >{this.props.item.granter}</td>
+        <td >{this.props.item.cancellable? "Yes":"No"}</td>
+      </tr>
+    );
+  }
+}
+
+class GrantList extends React.Component {
+  render () {
+    var items = this.props.items.map((item, index) => {
+      return (
+        <RecipientListItem key={index} item={item} index={index} removeItem={this.props.removeItem}/>
+      );
+    });
+
+    return (
+      <table className="table">
+        <thead>
+          <tr>
+            <th style={{width: "5%"}} scope="col">#</th>
+            <th style={{width: "40%"}} scope="col">Recipient</th>
+            <th style={{width: "20%"}} scope="col">Vest Amount</th>
+            <th style={{width: "25%"}} scope="col">Vest date (UTC)</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+        {items}
         </tbody>
       </table>
     );
@@ -46,9 +117,9 @@ class RecipientListItem extends React.Component {
     return(
       <tr>
         <th scope="row">{this.props.index+1}</th>
-        <td>{this.props.item.value.newAddressValue}</td>
-        <td>{this.props.item.value.newAmountValue}</td>
-        <td>{this.props.item.value.newDeadlineValue}</td>
+        <td>{this.props.item.value.addressValue}</td>
+        <td>{this.props.item.value.amountValue}</td>
+        <td>{this.props.item.value.deadlineValue}</td>
         <td >
           <button className="btn btn-sm btn-danger" type="button" onClick={this.onClickClose}>&times;</button>
         </td>
@@ -61,16 +132,17 @@ class RecipientForm extends React.Component {
   constructor(props) {
     super(props);
     this.onSubmit = this.onSubmit.bind(this);
+    this.curTime = new Date().toISOString().split(":").slice(0, 2).join(":");
   }
 
   onSubmit(event) {
     event.preventDefault();
-    var newAddressValue = this.refs.address.value;
-    var newAmountValue = this.refs.amount.value;
-    var newDeadlineValue = this.refs.deadline.value;
+    var addressValue = this.refs.address.value;
+    var amountValue = this.refs.amount.value;
+    var deadlineValue =  this.refs.deadline.value;
 
-    if(newAddressValue) {
-      this.props.addItem({newAddressValue, newAmountValue, newDeadlineValue});
+    if(addressValue) {
+      this.props.addItem({addressValue, amountValue, deadlineValue});
       this.refs.address.value = "";
       this.refs.amount.value = "";
       this.refs.deadline.value = "";
@@ -88,11 +160,11 @@ class RecipientForm extends React.Component {
           <input type="text" className="form-control" ref="amount" placeholder="Vest amount"/>
         </td>
         <td>
-          <input type="date" className="form-control" ref="deadline" placeholder="Vest date"/>
+          <input type="datetime-local" className="form-control" min={this.curTime} ref="deadline"/>
         </td>
         <td>
           <form ref="form" onSubmit={this.onSubmit} className="form-inline">
-            <button type="submit" className="btn btn-sm btn-primary">Add</button>
+            <button type="submit" className="btn btn-light">Add</button>
           </form>
         </td>
       </tr>
@@ -112,34 +184,81 @@ class CreateVestApp extends React.Component {
     this.signTx = this.signTx.bind(this);
     this.sendTxAndWitnessBack = this.sendTxAndWitnessBack.bind(this);
     this.state = {
-      recipientItems: recipientItems,
-      connected: false
+      pendingRecipients: [],
+      vests: [],
+      connected: false,
+      selectedTab: "create",
+      balance: 0,
     };
-    window.cardano.nami.isEnabled().then(
-      (enabled) => {
-          this.setState({connected: enabled})
-      }
-    )
+
+    ["nami", "eternl"].forEach((w) => {
+      if (window.cardano[w] !== undefined) {
+      window.cardano[w].isEnabled().then((enabled) => {
+          if (enabled) {
+            this.setState({connected: true});
+            this.setState({wallet: window.cardano[w]});
+            this.setState({icon: window.cardano[w].icon});
+            window.cardano.getBalance().then((balance) => {
+              var typedArray = new Uint8Array(balance.match(/[\da-f]{2}/gi).map(function (h) {
+                return parseInt(h, 16)
+              }))
+              var b = CBOR.decode(typedArray.buffer) / 1000000;
+              this.setState({balance: b});
+            });
+          }
+        }
+      ).catch((e) => {})
+    }});
   }
+
+  async componentDidMount() {
+    await this.updateVestList();
+  }
+
   onChange(e) {
 
   }
-  addItem(recipientItem) {
-    recipientItems.push({
-      index: recipientItems.length+1,
-      value: recipientItem,
-    });
-    this.setState({recipientItems: recipientItems});
+
+  selectTab(tabName) {
+    this.setState({selectedTab: tabName})
   }
+
+  addItem(recipientItem) {
+    this.setState(prevState => ({
+      pendingRecipients: [...prevState.pendingRecipients, {
+        index: this.state.pendingRecipients.length+1,
+        value: recipientItem,
+      }]
+    }))
+  }
+
   removeItem (itemIndex) {
-    recipientItems.splice(itemIndex, 1);
-    this.setState({recipientItems: recipientItems});
+    var items = [...this.state.pendingRecipients];
+    items.splice(itemIndex, 1);
+    this.setState({pendingRecipients: items});
+  }
+
+  async updateVestList() {
+    var usedAddresses = await window.cardano.getUsedAddresses();
+    console.log(usedAddresses);
+    var response = await fetch("get_vests?"+ new URLSearchParams({
+        address: usedAddresses,
+    }), {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json"
+      }
+    });
+
+    var j = await response.json();
+
+    if (j.results.length > 0) {
+      console.log(j.results);
+      this.setState({vests: j.results});
+    }
   }
 
   submitRequest(senders, change_address) {
-    console.log(senders);
-    console.log(change_address);
-    console.log(this.state.recipientItems);
     fetch('build_tx', {
       method: 'POST',
       headers: {
@@ -149,8 +268,8 @@ class CreateVestApp extends React.Component {
         {
           'senders': senders,
           'change_address': change_address,
-          'recipients': this.state.recipientItems.map((item, index) => {
-            return [item.value.newAddressValue, item.value.newAmountValue]
+          'recipients': this.state.pendingRecipients.map((item, index) => {
+            return [item.value.addressValue, item.value.amountValue]
           })
         }
       )
@@ -194,27 +313,104 @@ class CreateVestApp extends React.Component {
     })
   }
 
-  connectWallet(event) {
+  connectWallet(wallet) {
     if (!this.state.connected) {
-      window.cardano.nami.enable().then(
+      window.cardano[wallet].enable().then(
         () => {
-          this.setState({connected: true})
+          this.setState({connected: true});
         }
-      );
+      ).catch((err) => {
+        console.log("User rejected wallet connection", err);
+      });
     }
   }
   render() {
     return (
-      <div className="main card">
-        <div className="card-body">
-            <RecipientList items={this.props.initItems} addItem={this.addItem} removeItem={this.removeItem}/>
-            <button id="submitGrants" className="btn btn-primary" disabled={!this.state.connected} onChange={this.onChange} onClick={this.prepare_sender}>Submit Tx</button>
-            {/*<button className="btn btn-primary" disabled={this.state.connected} onChange={this.onChange} onClick={this.connectWallet}>Connect Nami wallet</button>*/}
+
+
+
+      <div>
+        <div>
+          <nav className="navbar navbar-expand-lg navbar-light bg-light">
+            <div className="container-fluid">
+              <a className="navbar-brand ms-3" href="#">Cardano Vesting</a>
+              <div>
+                {this.state.connected ? (
+                  <div className="container">
+                    <img style={{"width": "25px", "float": "left", "marginRight": "10px"}}
+                               src={this.state.icon}/>
+                    <div style={{"float": "left"}}>{this.state.balance} ₳</div>
+                  </div>
+                ) : (
+                  <div className="dropdown me-3">
+                    <button className="btn btn-light dropdown-toggle"
+                            type="button"
+                            data-bs-toggle="dropdown"
+                            aria-expanded="false">
+                      Connect Wallet
+                    </button>
+                    <ul className="dropdown-menu" style={{"float": "right"}}>
+                      <li>
+                        <div className="container dropdown-item wallet-icon" onClick={() => this.connectWallet("nami")}>
+                          <img style={{"width": "25px", "float": "left", "marginRight": "10px"}}
+                               src="static/assets/nami.svg"/>
+                          <div style={{"float": "left"}}>Nami</div>
+                        </div>
+                      </li>
+                      <li>
+                        <div className="container dropdown-item wallet-icon" onClick={() => this.connectWallet("eternl")}>
+                          <img style={{"width": "25px", "float": "left", "marginRight": "10px"}}
+                               src="static/assets/eternl.svg"/>
+                          <div style={{"float": "left"}}>Eternl</div>
+                        </div>
+                      </li>
+                    </ul>
+                  </div>
+                )}
+              </div>
+            </div>
+          </nav>
+        </div>
+
+        <div className="container">
+          <div className="main card">
+            <div className="card-body">
+              <div className="card-title">
+                <ul className="nav nav-tabs">
+                  <li className="nav-item">
+                    <a className={"nav-link " + ((this.state.selectedTab === "create") ? "active": "")}
+                      onClick={() => this.selectTab("create")}>Create</a>
+                  </li>
+                  <li className="nav-item">
+                    <a className={"nav-link " + ((this.state.selectedTab === "vest") ? "active": "")}
+                      onClick={() => this.selectTab("vest")}>Pending Vests</a>
+                  </li>
+                  <li className="nav-item">
+                    <a className={"nav-link " + ((this.state.selectedTab === "grants") ? "active": "")}
+                      onClick={() => this.selectTab("grants")}>Grants</a>
+                  </li>
+                </ul>
+              </div>
+
+              {this.state.selectedTab === "create" ? (
+                <div id="new-grant">
+                  <PendingRecipientList items={this.state.pendingRecipients} addItem={this.addItem} removeItem={this.removeItem}/>
+                  <button id="submitGrants" className="btn btn-primary" disabled={!this.state.connected} onChange={this.onChange} onClick={this.prepare_sender}>Submit</button>
+                </div>
+                ) : null}
+              {this.state.selectedTab === "vest" ? (
+                <div id="vest-list">
+                  <VestList items={this.state.vests}/>
+                </div>
+                ) :null}
+              {/*<button className="btn btn-primary" disabled={this.state.connected} onChange={this.onChange} onClick={this.connectWallet}>Connect Nami wallet</button>*/}
+            </div>
+          </div>
         </div>
       </div>
     );
   }
 }
 
-ReactDOM.render(<CreateVestApp initItems={recipientItems}/>, document.getElementById('app'));
+ReactDOM.render(<CreateVestApp/>, document.getElementById('app'));
 

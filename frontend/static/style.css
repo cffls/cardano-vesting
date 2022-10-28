@@ -1,6 +1,6 @@
 html, body {
   height: 100%;
-  color: #0b6280;
+  color: #064872;
   /*background: #2D2D2D;*/
 }
 
@@ -17,11 +17,19 @@ html, body {
 
 #submitGrants {
     float: right;
+    margin-right: 3%;
+}
+
+.nav-link {
+    cursor: pointer;
+}
+
+.wallet-icon {
+    cursor: pointer;
 }
 
 table {
     table-layout: fixed;
-    word-wrap: break-word;
 }
 
 
@@ -32,7 +40,8 @@ table th {
 
 table td {
     vertical-align: middle;
-    position: relative;
+    overflow: auto;
+    white-space: nowrap;
 }
 
 /*button {*/

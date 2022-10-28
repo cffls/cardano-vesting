@@ -1,11 +1,11 @@
-import os
+from datetime import datetime
 
-from dataclasses import asdict
 from flask import Flask, render_template, request
 
 from pycardano import (
     Address,
-    UTxO
+    UTxO,
+    VerificationKeyHash,
 )
 
 import cvest.offchain as oc
@@ -18,11 +18,11 @@ def format_utxo(utxo: UTxO):
         "tx_hash": utxo.input.transaction_id.payload.hex(),
         "tx_index": utxo.input.index,
         "amount": utxo.output.amount.coin,
-        "deadline": utxo.output.datum.deadline,
-        "cancellable": utxo.output.datum.cancellable,
-        "granter": utxo.output.datum.granter.hex(),
-        "beneficiary": utxo.output.datum.beneficiary.hex(),
-        "beneficiary_script": utxo.output.datum.beneficiary_script.hex(),
+        "deadline": datetime.utcfromtimestamp(int(utxo.output.datum.deadline/1000)).strftime('%Y-%m-%d %H:%M:%S'),
+        "cancellable": utxo.output.datum.cancellable == 1,
+        "granter": str(Address(VerificationKeyHash(utxo.output.datum.granter), network=oc.NETWORK)),
+        "beneficiary": str(Address(VerificationKeyHash(utxo.output.datum.beneficiary), network=oc.NETWORK) if utxo.output.datum.beneficiary else ""),
+        "beneficiary_script": str(Address(VerificationKeyHash(utxo.output.datum.beneficiary_script.hex()), network=oc.NETWORK) if utxo.output.datum.beneficiary_script else ""),
         "min_vest_amount": utxo.output.datum.min_vest_amount,
     }
 
