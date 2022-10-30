@@ -1,0 +1,40 @@
+html, body {
+  height: 100%;
+  color: #064872;
+}
+
+.main {
+    position: fixed;
+    top: 30%;
+    left: 20%;
+    width: 60%;
+}
+
+#submitGrants {
+    float: right;
+    margin-right: 3%;
+}
+
+.nav-link {
+    cursor: pointer;
+}
+
+.wallet-icon {
+    cursor: pointer;
+}
+
+table {
+    table-layout: fixed;
+}
+
+
+table th {
+    vertical-align: middle;
+    position: relative;
+}
+
+table td {
+    vertical-align: middle;
+    overflow: auto;
+    white-space: nowrap;
+}

@@ -1,6 +1,6 @@
-/*
-Recipient app structure
-*/
+const React = require("react");
+const cbor = require("cbor");
+
 
 class PendingRecipientList extends React.Component {
   render () {
@@ -45,7 +45,7 @@ class VestList extends React.Component {
             <th style={{width: "5%"}} scope="col">#</th>
             <th style={{width: "10%"}} scope="col">Amount</th>
             <th style={{width: "20%"}} scope="col">Vest date (UTC)</th>
-            <th style={{width: "30%"}} scope="col">Granter</th>
+            <th style={{width: "30%"}} scope="col">Sender</th>
             <th style={{width: "12%"}} scope="col">Cancellable</th>
           </tr>
         </thead>
@@ -79,7 +79,7 @@ class GrantList extends React.Component {
   render () {
     var items = this.props.items.map((item, index) => {
       return (
-        <RecipientListItem key={index} item={item} index={index} removeItem={this.props.removeItem}/>
+        <GrantListItem key={index} item={item} index={index}/>
       );
     });
 
@@ -88,10 +88,10 @@ class GrantList extends React.Component {
         <thead>
           <tr>
             <th style={{width: "5%"}} scope="col">#</th>
-            <th style={{width: "40%"}} scope="col">Recipient</th>
-            <th style={{width: "20%"}} scope="col">Vest Amount</th>
-            <th style={{width: "25%"}} scope="col">Vest date (UTC)</th>
-            <th></th>
+            <th style={{width: "10%"}} scope="col">Amount</th>
+            <th style={{width: "20%"}} scope="col">Vest date (UTC)</th>
+            <th style={{width: "30%"}} scope="col">Recipient</th>
+            <th style={{width: "12%"}} scope="col">Cancellable</th>
           </tr>
         </thead>
         <tbody>
@@ -102,9 +102,31 @@ class GrantList extends React.Component {
   }
 }
 
+class GrantListItem extends React.Component {
+  constructor(props) {
+    super(props);
+  }
+
+  render () {
+    return(
+      <tr>
+        <th scope="row">{this.props.index+1}</th>
+        <td >{parseFloat(this.props.item.amount)/1000000} ₳</td>
+        <td >{this.props.item.deadline}</td>
+        <td >{(this.props.item.beneficiary.length) > 0? this.props.item.beneficiary: this.props.item.beneficiary_script}</td>
+        <td >{this.props.item.cancellable? "Yes":"No"}</td>
+      </tr>
+    );
+  }
+}
+
 class RecipientListItem extends React.Component {
   constructor(props) {
     super(props);
+    // this.onClickClose = this.onClickClose.bind(this);
+  }
+
+  componentDidMount() {
     this.onClickClose = this.onClickClose.bind(this);
   }
 
@@ -118,7 +140,7 @@ class RecipientListItem extends React.Component {
       <tr>
         <th scope="row">{this.props.index+1}</th>
         <td>{this.props.item.value.addressValue}</td>
-        <td>{this.props.item.value.amountValue}</td>
+        <td>{this.props.item.value.amountValue} ₳</td>
         <td>{this.props.item.value.deadlineValue}</td>
         <td >
           <button className="btn btn-sm btn-danger" type="button" onClick={this.onClickClose}>&times;</button>
@@ -131,22 +153,30 @@ class RecipientListItem extends React.Component {
 class RecipientForm extends React.Component {
   constructor(props) {
     super(props);
-    this.onSubmit = this.onSubmit.bind(this);
+    // this.onSubmit = this.onSubmit.bind(this);
     this.curTime = new Date().toISOString().split(":").slice(0, 2).join(":");
+    this.address = React.createRef();
+    this.amount = React.createRef();
+    this.deadline = React.createRef();
+    this.form = React.createRef();
+  }
+
+  componentDidMount() {
+    this.onSubmit = this.onSubmit.bind(this);
   }
 
   onSubmit(event) {
     event.preventDefault();
-    var addressValue = this.refs.address.value;
-    var amountValue = this.refs.amount.value;
-    var deadlineValue =  this.refs.deadline.value;
+    var addressValue = this.address.current.value;
+    var amountValue = this.amount.current.value;
+    var deadlineValue =  this.deadline.current.value;
 
     if(addressValue) {
       this.props.addItem({addressValue, amountValue, deadlineValue});
-      this.refs.address.value = "";
-      this.refs.amount.value = "";
-      this.refs.deadline.value = "";
-      this.refs.form.reset();
+      this.address.current.value = "";
+      this.amount.current.value = "";
+      this.deadline.current.value = "";
+      this.form.current.reset();
     }
   }
   render () {
@@ -154,16 +184,16 @@ class RecipientForm extends React.Component {
       <tr>
         <th scope="row">{this.props.items.length+1}</th>
         <td>
-          <input type="text" className="form-control" ref="address" placeholder="Cardano address"/>
+          <input type="text" className="form-control" ref={this.address} placeholder="Cardano address"/>
         </td>
         <td>
-          <input type="text" className="form-control" ref="amount" placeholder="Vest amount"/>
+          <input type="text" className="form-control" ref={this.amount} placeholder="Vest amount"/>
         </td>
         <td>
-          <input type="datetime-local" className="form-control" min={this.curTime} ref="deadline"/>
+          <input type="datetime-local" className="form-control" min={this.curTime} ref={this.deadline}/>
         </td>
         <td>
-          <form ref="form" onSubmit={this.onSubmit} className="form-inline">
+          <form ref={this.form} onSubmit={this.onSubmit} className="form-inline">
             <button type="submit" className="btn btn-light">Add</button>
           </form>
         </td>
@@ -172,10 +202,23 @@ class RecipientForm extends React.Component {
   }
 }
 
-class CreateVestApp extends React.Component {
+class App extends React.Component {
   constructor (props) {
     super(props);
-    this.onChange = this.onChange.bind(this);
+    this.state = {
+      pendingRecipients: [],
+      vests: [],
+      grants: [],
+      connected: false,
+      selectedTab: "create",
+      balance: 0,
+      wallet: null,
+      walletName: "",
+      icon: null,
+    };
+  }
+
+  async componentDidMount() {
     this.addItem = this.addItem.bind(this);
     this.removeItem = this.removeItem.bind(this);
     this.submitRequest = this.submitRequest.bind(this);
@@ -183,40 +226,30 @@ class CreateVestApp extends React.Component {
     this.connectWallet = this.connectWallet.bind(this);
     this.signTx = this.signTx.bind(this);
     this.sendTxAndWitnessBack = this.sendTxAndWitnessBack.bind(this);
-    this.state = {
-      pendingRecipients: [],
-      vests: [],
-      connected: false,
-      selectedTab: "create",
-      balance: 0,
-    };
 
-    ["nami", "eternl"].forEach((w) => {
-      if (window.cardano[w] !== undefined) {
-      window.cardano[w].isEnabled().then((enabled) => {
-          if (enabled) {
-            this.setState({connected: true});
-            this.setState({wallet: window.cardano[w]});
-            this.setState({icon: window.cardano[w].icon});
-            window.cardano.getBalance().then((balance) => {
-              var typedArray = new Uint8Array(balance.match(/[\da-f]{2}/gi).map(function (h) {
-                return parseInt(h, 16)
-              }))
-              var b = CBOR.decode(typedArray.buffer) / 1000000;
-              this.setState({balance: b});
-            });
-          }
-        }
-      ).catch((e) => {})
-    }});
+    let wallets = ["nami", "eternl"];
+
+    for (let i = 0; i < wallets.length; i++) {
+      let wallet = wallets[i];
+      let enabled = await window.cardano[wallet].isEnabled();
+      if (enabled) {
+        let api = await window.cardano[wallet].enable();
+        this.setState({wallet: api, walletName: wallet, connected: true}, () => {
+          this.updateWalletInfo();
+          this.updateVestList();
+          this.updateGrantList();
+        });
+
+        break;
+      }
+    }
   }
 
-  async componentDidMount() {
-    await this.updateVestList();
-  }
-
-  onChange(e) {
-
+  async updateWalletInfo() {
+    this.setState({icon: window.cardano[this.state.walletName].icon});
+    this.state.wallet.getBalance().then((balance) => {
+      this.setState({balance: cbor.decodeAllSync(balance) / 1000000});
+    });
   }
 
   selectTab(tabName) {
@@ -239,22 +272,32 @@ class CreateVestApp extends React.Component {
   }
 
   async updateVestList() {
-    var usedAddresses = await window.cardano.getUsedAddresses();
-    console.log(usedAddresses);
-    var response = await fetch("get_vests?"+ new URLSearchParams({
+    let usedAddresses = await this.state.wallet.getUsedAddresses();
+    let response = await fetch("http://127.0.0.1:5000/get_vests?"+ new URLSearchParams({
         address: usedAddresses,
     }), {
       method: "GET",
-      headers: {
-        "Content-Type": "application/json"
-      }
     });
 
-    var j = await response.json();
+    let r = await response.json();
 
-    if (j.results.length > 0) {
-      console.log(j.results);
-      this.setState({vests: j.results});
+    if (r.results.length > 0) {
+      this.setState({vests: r.results});
+    }
+  }
+
+  async updateGrantList() {
+    let usedAddresses = await this.state.wallet.getUsedAddresses();
+    let response = await fetch("http://127.0.0.1:5000/get_grants?"+ new URLSearchParams({
+        address: usedAddresses,
+    }), {
+      method: "GET",
+    });
+
+    let r = await response.json();
+
+    if (r.results.length > 0) {
+      this.setState({grants: r.results});
     }
   }
 
@@ -316,8 +359,13 @@ class CreateVestApp extends React.Component {
   connectWallet(wallet) {
     if (!this.state.connected) {
       window.cardano[wallet].enable().then(
-        () => {
-          this.setState({connected: true});
+        (api) => {
+          this.setState(
+            {wallet: api, walletName: wallet, connected: true}, () => {
+            this.updateWalletInfo();
+            this.updateVestList();
+            this.updateGrantList();
+          });
         }
       ).catch((err) => {
         console.log("User rejected wallet connection", err);
@@ -326,9 +374,6 @@ class CreateVestApp extends React.Component {
   }
   render() {
     return (
-
-
-
       <div>
         <div>
           <nav className="navbar navbar-expand-lg navbar-light bg-light">
@@ -349,19 +394,19 @@ class CreateVestApp extends React.Component {
                             aria-expanded="false">
                       Connect Wallet
                     </button>
-                    <ul className="dropdown-menu" style={{"float": "right"}}>
-                      <li>
-                        <div className="container dropdown-item wallet-icon" onClick={() => this.connectWallet("nami")}>
+                    <ul className="dropdown-menu" >
+                      <li className="dropdown-item">
+                        <div className="wallet-icon" onClick={() => this.connectWallet("nami")}>
                           <img style={{"width": "25px", "float": "left", "marginRight": "10px"}}
-                               src="static/assets/nami.svg"/>
-                          <div style={{"float": "left"}}>Nami</div>
+                               src="nami.svg"/>
+                          <div>Nami</div>
                         </div>
                       </li>
-                      <li>
-                        <div className="container dropdown-item wallet-icon" onClick={() => this.connectWallet("eternl")}>
+                      <li className="dropdown-item">
+                        <div className="wallet-icon" onClick={() => this.connectWallet("eternl")}>
                           <img style={{"width": "25px", "float": "left", "marginRight": "10px"}}
-                               src="static/assets/eternl.svg"/>
-                          <div style={{"float": "left"}}>Eternl</div>
+                               src="eternl.svg"/>
+                          <div>Eternl</div>
                         </div>
                       </li>
                     </ul>
@@ -403,7 +448,11 @@ class CreateVestApp extends React.Component {
                   <VestList items={this.state.vests}/>
                 </div>
                 ) :null}
-              {/*<button className="btn btn-primary" disabled={this.state.connected} onChange={this.onChange} onClick={this.connectWallet}>Connect Nami wallet</button>*/}
+              {this.state.selectedTab === "grants" ? (
+                <div id="vest-list">
+                  <GrantList items={this.state.grants}/>
+                </div>
+                ) :null}
             </div>
           </div>
         </div>
@@ -412,5 +461,4 @@ class CreateVestApp extends React.Component {
   }
 }
 
-ReactDOM.render(<CreateVestApp/>, document.getElementById('app'));
-
+export default App;

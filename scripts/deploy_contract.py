@@ -27,7 +27,7 @@ blockfrost_id = os.getenv("BLOCKFROST_PROJECT_ID")
 assert blockfrost_id is not None, "BLOCKFROST_PROJECT_ID is not set"
 
 context = BlockFrostChainContext(
-    blockfrost_id, Network.TESTNET, "https://cardano-preprod.blockfrost.io/api"
+    blockfrost_id, Network.TESTNET, "https://cardano-preview.blockfrost.io/api"
 )
 
 owner_skey = PaymentSigningKey.load("keys/payment.skey")

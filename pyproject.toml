@@ -12,6 +12,7 @@ isort = "^5.10.1"
 black = "^22.8.0"
 Flask = "^2.2.2"
 cachetools = "^5.2.0"
+flask-cors = "^3.0.10"
 
 [tool.poetry.dev-dependencies]
 

@@ -64,10 +64,12 @@ script_address = Address(
     network=NETWORK
 )
 
+_network = "preview"
+
 context = BlockFrostChainContext(
-    get_env_var("BLOCKFROST_PROJECT_ID"),
+    get_env_var("BLOCKFROST_PROJECT_ID") if _network == "preprod" else get_env_var("BLOCKFROST_PREVIEW"),
     network=NETWORK,
-    base_url="https://cardano-preprod.blockfrost.io/api"
+    base_url="https://cardano-preprod.blockfrost.io/api" if _network == "preprod" else "https://cardano-preview.blockfrost.io/api"
 )
 
 
@@ -214,7 +216,7 @@ def vestable(utxo) -> bool:
     if utxo.output.datum is None:
         return False
 
-    return utxo.output.datum.deadline_in_datetime() <= datetime.now()
+    return utxo.output.datum.deadline_in_datetime() <= datetime.utcnow()
 
 
 def cancellable(utxo) -> bool:
@@ -224,7 +226,7 @@ def cancellable(utxo) -> bool:
     if utxo.output.datum is None:
         return False
 
-    return utxo.output.datum.deadline_in_datetime() > datetime.now() and utxo.output.datum.cancellable
+    return utxo.output.datum.deadline_in_datetime() > datetime.utcnow() and utxo.output.datum.cancellable
 
 
 def vest(beneficiary: Address, utxo: UTxO) -> Transaction:

@@ -1,6 +1,5 @@
-from datetime import datetime
-
 from flask import Flask, render_template, request
+from flask_cors import CORS, cross_origin
 
 from pycardano import (
     Address,
@@ -12,13 +11,16 @@ import cvest.offchain as oc
 
 app = Flask(__name__, template_folder='../frontend', static_folder='../frontend/static')
 
+cors = CORS(app)
+# app.config['CORS_HEADERS'] = 'Content-Type'
+
 
 def format_utxo(utxo: UTxO):
     return {
         "tx_hash": utxo.input.transaction_id.payload.hex(),
         "tx_index": utxo.input.index,
         "amount": utxo.output.amount.coin,
-        "deadline": datetime.utcfromtimestamp(int(utxo.output.datum.deadline/1000)).strftime('%Y-%m-%d %H:%M:%S'),
+        "deadline": utxo.output.datum.deadline_in_datetime().strftime('%Y-%m-%d %H:%M:%S'),
         "cancellable": utxo.output.datum.cancellable == 1,
         "granter": str(Address(VerificationKeyHash(utxo.output.datum.granter), network=oc.NETWORK)),
         "beneficiary": str(Address(VerificationKeyHash(utxo.output.datum.beneficiary), network=oc.NETWORK) if utxo.output.datum.beneficiary else ""),
@@ -28,6 +30,7 @@ def format_utxo(utxo: UTxO):
 
 
 @app.route("/get_grants")
+@cross_origin()
 def get_grants():
     addresses = [Address.from_primitive(bytes.fromhex(sender)) for sender in request.args.getlist("address")]
 
@@ -37,6 +40,7 @@ def get_grants():
 
 
 @app.route("/get_vests")
+@cross_origin()
 def get_vests():
     addresses = [Address.from_primitive(bytes.fromhex(sender)) for sender in request.args.getlist("address")]
 
