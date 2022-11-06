@@ -1,5 +1,7 @@
-const React = require("react");
-const cbor = require("cbor");
+import React from 'react';
+import cbor from "cbor";
+import { Buffer } from 'buffer';
+import * as CardanoWasm from "@emurgo/cardano-serialization-lib-asmjs";
 
 
 class PendingRecipientList extends React.Component {
@@ -11,12 +13,12 @@ class PendingRecipientList extends React.Component {
     });
 
     return (
-      <table className="table">
+      <table className="table table-hover">
         <thead>
           <tr>
             <th style={{width: "5%"}} scope="col">#</th>
             <th style={{width: "40%"}} scope="col">Recipient</th>
-            <th style={{width: "20%"}} scope="col">Vest Amount</th>
+            <th style={{width: "15%"}} scope="col">Amount</th>
             <th style={{width: "25%"}} scope="col">Vest date (UTC)</th>
             <th></th>
           </tr>
@@ -39,7 +41,7 @@ class VestList extends React.Component {
     });
 
     return (
-      <table className="table">
+      <table className="table table-bordered table-hover">
         <thead>
           <tr>
             <th style={{width: "5%"}} scope="col">#</th>
@@ -58,9 +60,6 @@ class VestList extends React.Component {
 }
 
 class VestListItem extends React.Component {
-  constructor(props) {
-    super(props);
-  }
 
   render () {
     return(
@@ -84,7 +83,7 @@ class GrantList extends React.Component {
     });
 
     return (
-      <table className="table">
+      <table className="table table-bordered table-hover">
         <thead>
           <tr>
             <th style={{width: "5%"}} scope="col">#</th>
@@ -103,9 +102,6 @@ class GrantList extends React.Component {
 }
 
 class GrantListItem extends React.Component {
-  constructor(props) {
-    super(props);
-  }
 
   render () {
     return(
@@ -123,15 +119,11 @@ class GrantListItem extends React.Component {
 class RecipientListItem extends React.Component {
   constructor(props) {
     super(props);
-    // this.onClickClose = this.onClickClose.bind(this);
-  }
-
-  componentDidMount() {
     this.onClickClose = this.onClickClose.bind(this);
   }
 
   onClickClose() {
-    var index = parseInt(this.props.index);
+    let index = parseInt(this.props.index);
     this.props.removeItem(index);
   }
 
@@ -141,7 +133,7 @@ class RecipientListItem extends React.Component {
         <th scope="row">{this.props.index+1}</th>
         <td>{this.props.item.value.addressValue}</td>
         <td>{this.props.item.value.amountValue} ₳</td>
-        <td>{this.props.item.value.deadlineValue}</td>
+        <td>{new Date(this.props.item.value.deadlineValue).toISOString().split(":").slice(0, 2).join(":")}</td>
         <td >
           <button className="btn btn-sm btn-danger" type="button" onClick={this.onClickClose}>&times;</button>
         </td>
@@ -153,47 +145,69 @@ class RecipientListItem extends React.Component {
 class RecipientForm extends React.Component {
   constructor(props) {
     super(props);
-    // this.onSubmit = this.onSubmit.bind(this);
-    this.curTime = new Date().toISOString().split(":").slice(0, 2).join(":");
-    this.address = React.createRef();
-    this.amount = React.createRef();
-    this.deadline = React.createRef();
-    this.form = React.createRef();
+    this.state = {
+      address: React.createRef(),
+      amount: React.createRef(),
+      deadline: React.createRef(),
+      curTime: new Date().toISOString().split(":").slice(0, 2).join(":"),
+      form: React.createRef()
+    }
   }
 
-  componentDidMount() {
-    this.onSubmit = this.onSubmit.bind(this);
-  }
-
-  onSubmit(event) {
+  async onSubmit(event) {
     event.preventDefault();
-    var addressValue = this.address.current.value;
-    var amountValue = this.amount.current.value;
-    var deadlineValue =  this.deadline.current.value;
+    let addressValue = this.state.address.current.value;
+
+    try {
+      await CardanoWasm.Address.from_bech32(addressValue);
+    } catch(err) {
+      alert("Invalid Cardano address: " + addressValue);
+      return;
+    }
+
+    let amountValue = this.state.amount.current.value;
+
+    if (!/^[0-9]+(.[0-9]{1,6})?$/.test(amountValue)) {
+      alert("Invalid ADA amount: " + amountValue);
+      return;
+    }
+
+    if (parseFloat(amountValue) < 1.5) {
+      alert("Minimum ADA amount is 1.5");
+      return;
+    }
+
+    let deadlineValue = Date.parse(this.state.deadline.current.value);
+
+    if (deadlineValue < Date.now()) {
+      alert("Vest date must be in the future");
+      return;
+    }
 
     if(addressValue) {
       this.props.addItem({addressValue, amountValue, deadlineValue});
-      this.address.current.value = "";
-      this.amount.current.value = "";
-      this.deadline.current.value = "";
-      this.form.current.reset();
+      this.state.address.current.value = "";
+      this.state.amount.current.value = "";
+      this.state.deadline.current.value = "";
+      this.state.form.current.reset();
     }
   }
+
   render () {
     return (
       <tr>
         <th scope="row">{this.props.items.length+1}</th>
         <td>
-          <input type="text" className="form-control" ref={this.address} placeholder="Cardano address"/>
+          <input type="text" className="form-control" ref={this.state.address} placeholder="Cardano address"/>
         </td>
         <td>
-          <input type="text" className="form-control" ref={this.amount} placeholder="Vest amount"/>
+          <input type="text" className="form-control" ref={this.state.amount} placeholder="Amount"/>
         </td>
         <td>
-          <input type="datetime-local" className="form-control" min={this.curTime} ref={this.deadline}/>
+          <input type="datetime-local" className="form-control" min={this.state.curTime} ref={this.state.deadline}/>
         </td>
         <td>
-          <form ref={this.form} onSubmit={this.onSubmit} className="form-inline">
+          <form ref={this.state.form} onSubmit={(event) => this.onSubmit(event)} className="form-inline">
             <button type="submit" className="btn btn-light">Add</button>
           </form>
         </td>
@@ -216,17 +230,17 @@ class App extends React.Component {
       walletName: "",
       icon: null,
     };
-  }
 
-  async componentDidMount() {
     this.addItem = this.addItem.bind(this);
     this.removeItem = this.removeItem.bind(this);
-    this.submitRequest = this.submitRequest.bind(this);
+    this.submitGrantRequest = this.submitGrantRequest.bind(this);
     this.prepare_sender = this.prepare_sender.bind(this);
     this.connectWallet = this.connectWallet.bind(this);
     this.signTx = this.signTx.bind(this);
     this.sendTxAndWitnessBack = this.sendTxAndWitnessBack.bind(this);
+  }
 
+  async componentDidMount() {
     let wallets = ["nami", "eternl"];
 
     for (let i = 0; i < wallets.length; i++) {
@@ -273,8 +287,9 @@ class App extends React.Component {
 
   async updateVestList() {
     let usedAddresses = await this.state.wallet.getUsedAddresses();
+    let unusedAddresses = await this.state.wallet.getUnusedAddresses();
     let response = await fetch("http://127.0.0.1:5000/get_vests?"+ new URLSearchParams({
-        address: usedAddresses,
+        address: usedAddresses+unusedAddresses,
     }), {
       method: "GET",
     });
@@ -301,8 +316,8 @@ class App extends React.Component {
     }
   }
 
-  submitRequest(senders, change_address) {
-    fetch('build_tx', {
+  submitGrantRequest(senders, change_address) {
+    fetch('http://127.0.0.1:5000/create_grants', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -311,8 +326,8 @@ class App extends React.Component {
         {
           'senders': senders,
           'change_address': change_address,
-          'recipients': this.state.pendingRecipients.map((item, index) => {
-            return [item.value.addressValue, item.value.amountValue]
+          'grants': this.state.pendingRecipients.map((item, index) => {
+            return {'address': item.value.addressValue, 'amount': item.value.amountValue, 'deadline': item.value.deadlineValue};
           })
         }
       )
@@ -323,14 +338,14 @@ class App extends React.Component {
 
   signTx(tx) {
     console.log(tx);
-    window.cardano.signTx(tx['tx']).then((witness) => {
+    this.state.wallet.signTx(tx['tx']).then((witness) => {
       this.sendTxAndWitnessBack(tx['tx'], witness)
     })
   }
 
   sendTxAndWitnessBack(tx, witness) {
     console.log(witness)
-    fetch('submit_tx', {
+    fetch('http://127.0.0.1:5000/submit_tx', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -349,9 +364,9 @@ class App extends React.Component {
   }
 
   prepare_sender() {
-    window.cardano.getUsedAddresses().then((senders) => {
-        window.cardano.getChangeAddress().then((change_address) => {
-            this.submitRequest(senders, change_address);
+    this.state.wallet.getUsedAddresses().then((senders) => {
+        this.state.wallet.getChangeAddress().then((change_address) => {
+            this.submitGrantRequest(senders, change_address);
         })
     })
   }
@@ -378,12 +393,12 @@ class App extends React.Component {
         <div>
           <nav className="navbar navbar-expand-lg navbar-light bg-light">
             <div className="container-fluid">
-              <a className="navbar-brand ms-3" href="#">Cardano Vesting</a>
+              <h3 className="navbar-brand ms-3">Cardano Vesting</h3>
               <div>
                 {this.state.connected ? (
                   <div className="container">
                     <img style={{"width": "25px", "float": "left", "marginRight": "10px"}}
-                               src={this.state.icon}/>
+                               src={this.state.icon} alt=""/>
                     <div style={{"float": "left"}}>{this.state.balance} ₳</div>
                   </div>
                 ) : (
@@ -398,14 +413,14 @@ class App extends React.Component {
                       <li className="dropdown-item">
                         <div className="wallet-icon" onClick={() => this.connectWallet("nami")}>
                           <img style={{"width": "25px", "float": "left", "marginRight": "10px"}}
-                               src="nami.svg"/>
+                               src="nami.svg" alt=""/>
                           <div>Nami</div>
                         </div>
                       </li>
                       <li className="dropdown-item">
                         <div className="wallet-icon" onClick={() => this.connectWallet("eternl")}>
                           <img style={{"width": "25px", "float": "left", "marginRight": "10px"}}
-                               src="eternl.svg"/>
+                               src="eternl.svg" alt=""/>
                           <div>Eternl</div>
                         </div>
                       </li>
@@ -423,16 +438,16 @@ class App extends React.Component {
               <div className="card-title">
                 <ul className="nav nav-tabs">
                   <li className="nav-item">
-                    <a className={"nav-link " + ((this.state.selectedTab === "create") ? "active": "")}
-                      onClick={() => this.selectTab("create")}>Create</a>
+                    <div className={"nav-link " + ((this.state.selectedTab === "create") ? "active": "")}
+                      onClick={() => this.selectTab("create")}>Create</div>
                   </li>
                   <li className="nav-item">
-                    <a className={"nav-link " + ((this.state.selectedTab === "vest") ? "active": "")}
-                      onClick={() => this.selectTab("vest")}>Pending Vests</a>
+                    <div className={"nav-link " + ((this.state.selectedTab === "vest") ? "active": "")}
+                      onClick={() => this.selectTab("vest")}>Pending Vests</div>
                   </li>
                   <li className="nav-item">
-                    <a className={"nav-link " + ((this.state.selectedTab === "grants") ? "active": "")}
-                      onClick={() => this.selectTab("grants")}>Grants</a>
+                    <div className={"nav-link " + ((this.state.selectedTab === "grants") ? "active": "")}
+                      onClick={() => this.selectTab("grants")}>Grants</div>
                   </li>
                 </ul>
               </div>

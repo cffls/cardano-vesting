@@ -126,7 +126,7 @@ policy mp = PlutusV2.mkMintingPolicyScript $
 
 script :: PubKeyHash -> PlutusV2.Script
 script pkh = PlutusV2.unMintingPolicyScript $ policy ContractParam
-    { vestPKH = "db8a254bd3f15482f73ec401b01840158073b6d4fc934bcf4560a498"
+    { vestPKH = "014f5da9fb84e25ba3503bccc482a791ebf19f634b5fa8c15527e4bc"
     , ownerPKH  = pkh
     , mintFee = 8000000
     }

@@ -44,7 +44,7 @@ import Common (VestingDatum(..))
 
 
 minVestFee :: Integer
-minVestFee = 0
+minVestFee = 1500000
 
 
 {-# INLINABLE mkValidator #-}

@@ -46,6 +46,7 @@ with open(get_env_var("MINT_UTXO_PATH"), "rb") as f:
     mint_utxo = pickle.load(f)
 
 NETWORK = Network.TESTNET
+VEST_FEE = 1500000
 MINT_FEE = 10000000
 MAX_MINT_SPAN = 3650
 
@@ -74,18 +75,29 @@ context = BlockFrostChainContext(
 
 
 def create_grant_tx(
-    sender: Address,
-    beneficiary: Address,
-    vals: List[tuple[datetime, int]],
-    cancellable: bool = False,
-    pay_fee_from_vest: bool = True,
+    senders: Union[Address, List[Address]],
+    vals: List[tuple[Address, datetime, int]],
+    can_cancel: bool = False,
     mint: bool = True,
+    change_address: Address = None,
 ) -> Transaction:
     """
     Create an unsigned transaction that generates UTxOs that can be spent by the beneficiary after specific deadlines.
     """
+    if isinstance(senders, list):
+        sender = senders[0]
+    else:
+        sender = senders
+        senders = [sender]
+
     tx_builder = TransactionBuilder(context)
-    tx_builder.add_input_address(sender)
+
+    for s in senders:
+        try:
+            context.utxos(str(s))
+            tx_builder.add_input_address(s)
+        except Exception:
+            pass
 
     ttl = 1200  # 1200 seconds
 
@@ -93,19 +105,18 @@ def create_grant_tx(
 
     mint_amount = 0
 
-    for deadline, amount in vals:
-        if pay_fee_from_vest:
-            min_vest_amount = amount - 500000
-            datum = new_vesting_datum(beneficiary, sender, cancellable, deadline, min_vest_amount)
-        else:
-            datum = new_vesting_datum(beneficiary, sender, cancellable, deadline, amount)
+    tx_fee_estimate = 500000
+
+    for beneficiary, deadline, amount in vals:
+        min_vest_amount = amount - tx_fee_estimate - VEST_FEE
+        datum = new_vesting_datum(beneficiary, sender, can_cancel, deadline, min_vest_amount)
         tx_output = TransactionOutput(script_address, amount, datum=datum)
         tx_builder.add_output(tx_output)
 
         delta = deadline - datetime.now() - timedelta(seconds=ttl)
         mint_amount += min(max(delta.days, 0), MAX_MINT_SPAN) * amount
 
-    if mint and mint_amount > 0 and not cancellable:
+    if mint and mint_amount > 0 and not can_cancel:
         tx_builder.add_minting_script(mint_utxo, Redeemer(RedeemerTag.MINT, data=1))
         tokens = MultiAsset.from_primitive({
             script_hash(mint_utxo.output.script).payload: {b"LOCK": mint_amount}
@@ -138,7 +149,9 @@ def create_grant_tx(
         auxiliary_data = AuxiliaryData(AlonzoMetadata(metadata=Metadata(metadata)))
         tx_builder.auxiliary_data = auxiliary_data
 
-    return tx_builder.build_and_sign([owner_skey], sender, merge_change=True)
+    signers = [owner_skey] if mint and mint_amount > 0 else []
+
+    return tx_builder.build_and_sign(signers, change_address or sender)
 
 
 def typed_datum(utxo: UTxO) -> UTxO:
@@ -245,6 +258,7 @@ def vest(beneficiary: Address, utxo: UTxO) -> Transaction:
     tx_builder.validity_start = context.last_block_slot
 
     tx_builder.add_output(TransactionOutput(beneficiary, utxo.output.datum.min_vest_amount))
+    tx_builder.add_output(TransactionOutput(fee_address, VEST_FEE))
 
     # Sign with owner's signing key so the collateral can be spent.
     tx = tx_builder.build_and_sign([owner_skey], beneficiary, merge_change=True, collateral_change_address=owner_addr)
