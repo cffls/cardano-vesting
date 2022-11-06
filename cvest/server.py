@@ -35,7 +35,6 @@ def format_utxo(utxo: UTxO):
     }
 
 def get_addr_from_hex(addr):
-    print(addr)
     try:
         return Address(VerificationKeyHash(bytes.fromhex(addr)), network=oc.NETWORK)
     except Exception as e:
@@ -51,8 +50,6 @@ def get_grants():
             clean_addrs.extend(addr.split(","))
         else:
             clean_addrs.append(addr)
-
-    print("Clean addrs:", clean_addrs)
 
     addresses = [get_addr_from_hex(sender) for sender in clean_addrs if len(sender) <= 114]
 
@@ -71,8 +68,6 @@ def get_vests():
         else:
             clean_addrs.append(addr)
 
-    print("Clean addrs:", clean_addrs)
-
     addresses = [get_addr_from_hex(sender) for sender in clean_addrs if len(sender) <= 114]
 
     vests = oc.get_pending(addresses)
@@ -84,7 +79,6 @@ def get_vests():
 @cross_origin()
 def create_grants():
     data = request.json
-    print(data)
     senders = [get_addr_from_hex(sender) for sender in data["senders"]]
 
     grants = [(Address.from_primitive(grant["address"]),
