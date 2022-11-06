@@ -1,10 +1,8 @@
 from datetime import datetime
 
+import pycardano
 from flask import Flask, request
 from flask_cors import CORS, cross_origin
-
-import pycardano
-
 from pycardano import (
     Address,
     Transaction,
@@ -15,7 +13,7 @@ from pycardano import (
 
 import cvest.offchain as oc
 
-app = Flask(__name__, template_folder='../frontend', static_folder='../frontend/static')
+app = Flask(__name__, template_folder="../frontend", static_folder="../frontend/static")
 
 cors = CORS(app)
 # app.config['CORS_HEADERS'] = 'Content-Type'
@@ -26,13 +24,31 @@ def format_utxo(utxo: UTxO):
         "tx_hash": utxo.input.transaction_id.payload.hex(),
         "tx_index": utxo.input.index,
         "amount": utxo.output.amount.coin,
-        "deadline": utxo.output.datum.deadline_in_datetime().strftime('%Y-%m-%dT%H:%M:%S'),
+        "deadline": utxo.output.datum.deadline_in_datetime().strftime(
+            "%Y-%m-%dT%H:%M:%S"
+        ),
         "cancellable": utxo.output.datum.cancellable == 1,
-        "granter": str(Address(VerificationKeyHash(utxo.output.datum.granter), network=oc.NETWORK)),
-        "beneficiary": str(Address(VerificationKeyHash(utxo.output.datum.beneficiary), network=oc.NETWORK) if utxo.output.datum.beneficiary else ""),
-        "beneficiary_script": str(Address(VerificationKeyHash(utxo.output.datum.beneficiary_script.hex()), network=oc.NETWORK) if utxo.output.datum.beneficiary_script else ""),
+        "granter": str(
+            Address(VerificationKeyHash(utxo.output.datum.granter), network=oc.NETWORK)
+        ),
+        "beneficiary": str(
+            Address(
+                VerificationKeyHash(utxo.output.datum.beneficiary), network=oc.NETWORK
+            )
+            if utxo.output.datum.beneficiary
+            else ""
+        ),
+        "beneficiary_script": str(
+            Address(
+                VerificationKeyHash(utxo.output.datum.beneficiary_script.hex()),
+                network=oc.NETWORK,
+            )
+            if utxo.output.datum.beneficiary_script
+            else ""
+        ),
         "min_vest_amount": utxo.output.datum.min_vest_amount,
     }
+
 
 def get_addr_from_hex(addr):
     try:
@@ -41,17 +57,21 @@ def get_addr_from_hex(addr):
         return pycardano.Address.decode(bytes.fromhex(addr))
 
 
-@app.route("/get_grants")
-@cross_origin()
-def get_grants():
+def clean_addresses(addresses):
     clean_addrs = []
-    for addr in request.args.getlist("address"):
+    for addr in addresses:
         if "," in addr:
             clean_addrs.extend(addr.split(","))
         else:
             clean_addrs.append(addr)
 
-    addresses = [get_addr_from_hex(sender) for sender in clean_addrs if len(sender) <= 114]
+    return [get_addr_from_hex(sender) for sender in clean_addrs if len(sender) <= 114]
+
+
+@app.route("/get_grants")
+@cross_origin()
+def get_grants():
+    addresses = clean_addresses(request.args.getlist("address"))
 
     grants = oc.get_grants(addresses)
 
@@ -61,14 +81,7 @@ def get_grants():
 @app.route("/get_vests")
 @cross_origin()
 def get_vests():
-    clean_addrs = []
-    for addr in request.args.getlist("address"):
-        if "," in addr:
-            clean_addrs.extend(addr.split(","))
-        else:
-            clean_addrs.append(addr)
-
-    addresses = [get_addr_from_hex(sender) for sender in clean_addrs if len(sender) <= 114]
+    addresses = clean_addresses(request.args.getlist("address"))
 
     vests = oc.get_pending(addresses)
 
@@ -81,14 +94,21 @@ def create_grants():
     data = request.json
     senders = [get_addr_from_hex(sender) for sender in data["senders"]]
 
-    grants = [(Address.from_primitive(grant["address"]),
-               datetime.fromtimestamp(grant["deadline"]/1000),
-               int(float(grant["amount"])*1000000)) for grant in data["grants"]]
+    grants = [
+        (
+            Address.from_primitive(grant["address"]),
+            datetime.fromtimestamp(grant["deadline"] / 1000),
+            int(float(grant["amount"]) * 1000000),
+        )
+        for grant in data["grants"]
+    ]
 
-    tx = oc.create_grant_tx(senders,
-                            grants,
-                            can_cancel=True,
-                            change_address=get_addr_from_hex(data["change_address"]))
+    tx = oc.create_grant_tx(
+        senders,
+        grants,
+        can_cancel=True,
+        change_address=get_addr_from_hex(data["change_address"]),
+    )
 
     return {"tx": tx.to_cbor()}
 

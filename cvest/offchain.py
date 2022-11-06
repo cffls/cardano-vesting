@@ -1,12 +1,10 @@
 import os
 import pickle
-
 from datetime import datetime, timedelta
 from typing import List, Union
 
 import cbor2
-
-from cachetools import cached, TTLCache
+from cachetools import TTLCache, cached
 from pycardano import (
     Address,
     AlonzoMetadata,
@@ -15,18 +13,18 @@ from pycardano import (
     Metadata,
     MultiAsset,
     Network,
+    PaymentSigningKey,
+    PaymentVerificationKey,
     PlutusData,
     Redeemer,
     RedeemerTag,
-    PaymentSigningKey,
-    PaymentVerificationKey,
     Transaction,
     TransactionBuilder,
     TransactionOutput,
     UTxO,
     Value,
+    min_lovelace_post_alonzo,
     script_hash,
-    min_lovelace_post_alonzo
 )
 
 from cvest.datum import VestingDatum, new_vesting_datum
@@ -60,17 +58,18 @@ owner_vkey = PaymentVerificationKey.from_signing_key(owner_skey)
 
 owner_addr = Address(owner_vkey.hash(), network=NETWORK)
 
-script_address = Address(
-    payment_part=payment_pkh,
-    network=NETWORK
-)
+script_address = Address(payment_part=payment_pkh, network=NETWORK)
 
 _network = "preview"
 
 context = BlockFrostChainContext(
-    get_env_var("BLOCKFROST_PROJECT_ID") if _network == "preprod" else get_env_var("BLOCKFROST_PREVIEW"),
+    get_env_var("BLOCKFROST_PROJECT_ID")
+    if _network == "preprod"
+    else get_env_var("BLOCKFROST_PREVIEW"),
     network=NETWORK,
-    base_url="https://cardano-preprod.blockfrost.io/api" if _network == "preprod" else "https://cardano-preview.blockfrost.io/api"
+    base_url="https://cardano-preprod.blockfrost.io/api"
+    if _network == "preprod"
+    else "https://cardano-preview.blockfrost.io/api",
 )
 
 
@@ -109,7 +108,9 @@ def create_grant_tx(
 
     for beneficiary, deadline, amount in vals:
         min_vest_amount = amount - tx_fee_estimate - VEST_FEE
-        datum = new_vesting_datum(beneficiary, sender, can_cancel, deadline, min_vest_amount)
+        datum = new_vesting_datum(
+            beneficiary, sender, can_cancel, deadline, min_vest_amount
+        )
         tx_output = TransactionOutput(script_address, amount, datum=datum)
         tx_builder.add_output(tx_output)
 
@@ -118,9 +119,9 @@ def create_grant_tx(
 
     if mint and mint_amount > 0 and not can_cancel:
         tx_builder.add_minting_script(mint_utxo, Redeemer(RedeemerTag.MINT, data=1))
-        tokens = MultiAsset.from_primitive({
-            script_hash(mint_utxo.output.script).payload: {b"LOCK": mint_amount}
-        })
+        tokens = MultiAsset.from_primitive(
+            {script_hash(mint_utxo.output.script).payload: {b"LOCK": mint_amount}}
+        )
 
         tx_builder.mint = tokens
 
@@ -139,7 +140,7 @@ def create_grant_tx(
                         "decimals": 6,
                         "desc": "LOCK Token",
                         "ticker": "LOCK",
-                        "version": "1.0"
+                        "version": "1.0",
                     }
                 }
             }
@@ -200,7 +201,10 @@ def get_pending(beneficiaries: Union[Address, List[Address]]) -> List[UTxO]:
     results = []
 
     for u in utxos:
-        if u.output.datum.beneficiary in payment_part_set or u.output.datum.beneficiary_script in payment_part_set:
+        if (
+            u.output.datum.beneficiary in payment_part_set
+            or u.output.datum.beneficiary_script in payment_part_set
+        ):
             results.append(u)
 
     return results
@@ -239,7 +243,10 @@ def cancellable(utxo) -> bool:
     if utxo.output.datum is None:
         return False
 
-    return utxo.output.datum.deadline_in_datetime() > datetime.utcnow() and utxo.output.datum.cancellable
+    return (
+        utxo.output.datum.deadline_in_datetime() > datetime.utcnow()
+        and utxo.output.datum.cancellable
+    )
 
 
 def vest(beneficiary: Address, utxo: UTxO) -> Transaction:
@@ -252,16 +259,25 @@ def vest(beneficiary: Address, utxo: UTxO) -> Transaction:
     # tx_builder.execution_memory_buffer = 0.3
     # tx_builder.execution_step_buffer = 0.3
 
-    tx_builder.add_script_input(utxo, vest_utxo, None, Redeemer(RedeemerTag.SPEND, data=PlutusData()))
+    tx_builder.add_script_input(
+        utxo, vest_utxo, None, Redeemer(RedeemerTag.SPEND, data=PlutusData())
+    )
 
     tx_builder.ttl = context.last_block_slot + 1200
     tx_builder.validity_start = context.last_block_slot
 
-    tx_builder.add_output(TransactionOutput(beneficiary, utxo.output.datum.min_vest_amount))
+    tx_builder.add_output(
+        TransactionOutput(beneficiary, utxo.output.datum.min_vest_amount)
+    )
     tx_builder.add_output(TransactionOutput(fee_address, VEST_FEE))
 
     # Sign with owner's signing key so the collateral can be spent.
-    tx = tx_builder.build_and_sign([owner_skey], beneficiary, merge_change=True, collateral_change_address=owner_addr)
+    tx = tx_builder.build_and_sign(
+        [owner_skey],
+        beneficiary,
+        merge_change=True,
+        collateral_change_address=owner_addr,
+    )
 
     return tx
 
@@ -276,18 +292,24 @@ def cancel(granter: Address, utxos: List[UTxO]) -> Transaction:
     # tx_builder.execution_step_buffer = 0.5
 
     for utxo in utxos:
-        tx_builder.add_script_input(utxo, vest_utxo, None, Redeemer(RedeemerTag.SPEND, data=PlutusData()))
+        tx_builder.add_script_input(
+            utxo, vest_utxo, None, Redeemer(RedeemerTag.SPEND, data=PlutusData())
+        )
 
     tx_builder.ttl = context.last_block_slot + 1200
     tx_builder.validity_start = context.last_block_slot
 
     tx_builder.add_input_address(granter)
 
-    tx_builder.add_output(TransactionOutput(granter, sum([u.output.amount.coin for u in utxos])))
+    tx_builder.add_output(
+        TransactionOutput(granter, sum([u.output.amount.coin for u in utxos]))
+    )
 
     # Require granter to sign this transaction.
     tx_builder.required_signers = [granter.payment_part.payload]
 
-    tx = tx_builder.build_and_sign([], granter, merge_change=True, collateral_change_address=granter)
+    tx = tx_builder.build_and_sign(
+        [], granter, merge_change=True, collateral_change_address=granter
+    )
 
     return tx

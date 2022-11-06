@@ -43,7 +43,9 @@ with open("contract/vesting-plutusV2.plutus", "r") as f:
     val = json.load(f)
     vest_script = PlutusV2Script(cbor2.loads(bytes.fromhex(val["cborHex"])))
 
-vest_script_output = TransactionOutput(address=owner_address, amount=1000000, script=vest_script)
+vest_script_output = TransactionOutput(
+    address=owner_address, amount=1000000, script=vest_script
+)
 vest_script_output.amount = min_lovelace_post_alonzo(vest_script_output, context)
 
 tx_builder.add_output(vest_script_output)
@@ -53,7 +55,9 @@ with open("contract/mint-plutusV2.plutus", "r") as f:
     val = json.load(f)
     mint_script = PlutusV2Script(cbor2.loads(bytes.fromhex(val["cborHex"])))
 
-mint_script_output = TransactionOutput(address=owner_address, amount=1000000, script=mint_script)
+mint_script_output = TransactionOutput(
+    address=owner_address, amount=1000000, script=mint_script
+)
 mint_script_output.amount = min_lovelace_post_alonzo(mint_script_output, context)
 
 tx_builder.add_output(mint_script_output)
