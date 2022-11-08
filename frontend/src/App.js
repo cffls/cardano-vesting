@@ -229,6 +229,7 @@ class App extends React.Component {
       wallet: null,
       walletName: "",
       icon: null,
+      pendingTx: false,
     };
 
     this.addItem = this.addItem.bind(this);
@@ -316,35 +317,40 @@ class App extends React.Component {
     }
   }
 
-  submitGrantRequest(senders, change_address) {
-    fetch('http://127.0.0.1:5000/create_grants', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(
-        {
-          'senders': senders,
-          'change_address': change_address,
-          'grants': this.state.pendingRecipients.map((item, index) => {
-            return {'address': item.value.addressValue, 'amount': item.value.amountValue, 'deadline': item.value.deadlineValue};
-          })
-        }
-      )
-    })
-    .then(response => response.json())
-    .then(this.signTx)
+  async submitGrantRequest(senders, change_address) {
+    try {
+      let response = await fetch('http://127.0.0.1:5000/create_grants', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(
+          {
+            'senders': senders,
+            'change_address': change_address,
+            'grants': this.state.pendingRecipients.map((item, index) => {
+              return {
+                'address': item.value.addressValue,
+                'amount': item.value.amountValue,
+                'deadline': item.value.deadlineValue
+              };
+            })
+          }
+        )
+      })
+      await this.signTx(await response.json());
+      this.state.pendingRecipients = [];
+    } catch(error) {
+      console.log(error);
+    }
   }
 
-  signTx(tx) {
-    console.log(tx);
-    this.state.wallet.signTx(tx['tx']).then((witness) => {
-      this.sendTxAndWitnessBack(tx['tx'], witness)
-    })
+  async signTx(tx) {
+    let witness = await this.state.wallet.signTx(tx['tx']);
+    await this.sendTxAndWitnessBack(tx['tx'], witness);
   }
 
-  sendTxAndWitnessBack(tx, witness) {
-    console.log(witness)
+  async sendTxAndWitnessBack(tx, witness) {
     fetch('http://127.0.0.1:5000/submit_tx', {
       method: 'POST',
       headers: {
@@ -363,12 +369,12 @@ class App extends React.Component {
     })
   }
 
-  prepare_sender() {
-    this.state.wallet.getUsedAddresses().then((senders) => {
-        this.state.wallet.getChangeAddress().then((change_address) => {
-            this.submitGrantRequest(senders, change_address);
-        })
-    })
+  async prepare_sender() {
+    this.setState({pendingTx: true});
+    let usedAddresses = await this.state.wallet.getUsedAddresses();
+    let changeAddress = await this.state.wallet.getChangeAddress();
+    await this.submitGrantRequest(usedAddresses, changeAddress);
+    this.setState({pendingTx: false});
   }
 
   connectWallet(wallet) {
@@ -455,7 +461,14 @@ class App extends React.Component {
               {this.state.selectedTab === "create" ? (
                 <div id="new-grant">
                   <PendingRecipientList items={this.state.pendingRecipients} addItem={this.addItem} removeItem={this.removeItem}/>
-                  <button id="submitGrants" className="btn btn-primary" disabled={!this.state.connected} onChange={this.onChange} onClick={this.prepare_sender}>Submit</button>
+                  <button id="submitGrants"
+                          className="btn btn-primary"
+                          disabled={!this.state.connected || this.state.pendingTx}
+                          onClick={this.prepare_sender}>
+                    {this.state.pendingTx ? (
+                      <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                    ) : ("Submit")}
+                  </button>
                 </div>
                 ) : null}
               {this.state.selectedTab === "vest" ? (
