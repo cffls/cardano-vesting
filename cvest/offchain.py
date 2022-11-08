@@ -63,7 +63,7 @@ script_address = Address(payment_part=payment_pkh, network=NETWORK)
 _network = "preview"
 
 context = BlockFrostChainContext(
-    get_env_var("BLOCKFROST_PROJECT_ID")
+    get_env_var("BLOCKFROST_PREPROD")
     if _network == "preprod"
     else get_env_var("BLOCKFROST_PREVIEW"),
     network=NETWORK,

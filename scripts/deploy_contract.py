@@ -20,15 +20,27 @@ from pycardano import (
     min_lovelace_post_alonzo,
 )
 
+def get_env_var(key):
+    val = os.environ.get(key, None)
+    if val is None:
+        raise Exception(f"Couldn't find env variable: {key}!")
+    return val
+
+
 network = Network.TESTNET
 
-blockfrost_id = os.getenv("BLOCKFROST_PROJECT_ID")
-
-assert blockfrost_id is not None, "BLOCKFROST_PROJECT_ID is not set"
+_network = "preview"
 
 context = BlockFrostChainContext(
-    blockfrost_id, Network.TESTNET, "https://cardano-preview.blockfrost.io/api"
+    get_env_var("BLOCKFROST_PREPROD")
+    if _network == "preprod"
+    else get_env_var("BLOCKFROST_PREVIEW"),
+    network=network,
+    base_url="https://cardano-preprod.blockfrost.io/api"
+    if _network == "preprod"
+    else "https://cardano-preview.blockfrost.io/api",
 )
+
 
 owner_skey = PaymentSigningKey.load("keys/payment.skey")
 owner_vkey = PaymentVerificationKey.from_signing_key(owner_skey)
