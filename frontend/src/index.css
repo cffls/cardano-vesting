@@ -10,9 +10,19 @@ html, body {
     width: 60%;
 }
 
+#summaryTable {
+    /*position: fixed;*/
+    /*right: 80%;*/
+    float: right;
+    max-width: 30%;
+}
+
 #submitGrants {
     float: right;
-    margin-right: 3%;
+}
+
+.cellAlignRight {
+    text-align: right;
 }
 
 .nav-link {

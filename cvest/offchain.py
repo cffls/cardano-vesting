@@ -107,11 +107,11 @@ def create_grant_tx(
     tx_fee_estimate = 500000
 
     for beneficiary, deadline, amount in vals:
-        min_vest_amount = amount - tx_fee_estimate - VEST_FEE
+        total_amount = amount + tx_fee_estimate + VEST_FEE
         datum = new_vesting_datum(
-            beneficiary, sender, can_cancel, deadline, min_vest_amount
+            beneficiary, sender, can_cancel, deadline, amount
         )
-        tx_output = TransactionOutput(script_address, amount, datum=datum)
+        tx_output = TransactionOutput(script_address, total_amount, datum=datum)
         tx_builder.add_output(tx_output)
 
         delta = deadline - datetime.now() - timedelta(seconds=ttl)

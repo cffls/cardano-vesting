@@ -65,7 +65,7 @@ class VestListItem extends React.Component {
     return(
       <tr>
         <th scope="row">{this.props.index+1}</th>
-        <td >{parseFloat(this.props.item.amount)/1000000} ₳</td>
+        <td >₳ {parseFloat(this.props.item.amount)/1000000}</td>
         <td >{this.props.item.deadline}</td>
         <td >{this.props.item.granter}</td>
         <td >{this.props.item.cancellable? "Yes":"No"}</td>
@@ -107,7 +107,7 @@ class GrantListItem extends React.Component {
     return(
       <tr>
         <th scope="row">{this.props.index+1}</th>
-        <td >{parseFloat(this.props.item.amount)/1000000} ₳</td>
+        <td >₳ {parseFloat(this.props.item.amount)/1000000}</td>
         <td >{this.props.item.deadline}</td>
         <td >{(this.props.item.beneficiary.length) > 0? this.props.item.beneficiary: this.props.item.beneficiary_script}</td>
         <td >{this.props.item.cancellable? "Yes":"No"}</td>
@@ -132,9 +132,9 @@ class RecipientListItem extends React.Component {
       <tr>
         <th scope="row">{this.props.index+1}</th>
         <td>{this.props.item.value.addressValue}</td>
-        <td>{this.props.item.value.amountValue} ₳</td>
+        <td>₳ {this.props.item.value.amountValue}</td>
         <td>{new Date(this.props.item.value.deadlineValue).toISOString().split(":").slice(0, 2).join(":")}</td>
-        <td >
+        <td className="cellAlignRight">
           <button className="btn btn-sm btn-danger" type="button" onClick={this.onClickClose}>&times;</button>
         </td>
       </tr>
@@ -172,8 +172,8 @@ class RecipientForm extends React.Component {
       return;
     }
 
-    if (parseFloat(amountValue) < 1.5) {
-      alert("Minimum ADA amount is 1.5");
+    if (parseFloat(amountValue) < 3) {
+      alert("Minimum ADA amount is 3");
       return;
     }
 
@@ -206,12 +206,65 @@ class RecipientForm extends React.Component {
         <td>
           <input type="datetime-local" className="form-control" min={this.state.curTime} ref={this.state.deadline}/>
         </td>
-        <td>
+        <td className="cellAlignRight">
           <form ref={this.state.form} onSubmit={(event) => this.onSubmit(event)} className="form-inline">
             <button type="submit" className="btn btn-light">Add</button>
           </form>
         </td>
       </tr>
+    );
+  }
+}
+
+let roundToADA = (amount) => {
+  return Math.round(amount * 1000000) / 1000000;
+}
+
+class CreateSummaryTable extends React.Component {
+  // render a vertical table with the summary of the vesting schedule to be created
+  // the table contains the total amount of vesting fee (1.5 ₳ per vest), transaction fee (~0.5 ₳),
+  // total amount of ADA to be vested (vest amount + vesting fee + network fee)
+  render () {
+    let baseFee = 0.17;
+    let totalVestAmount = 0;
+    let totalVestingFee = 0;
+    let totalVestingTxFee = 0;
+    let createGrantTxFee = baseFee;
+
+    this.props.items.forEach((item) => {
+      let amount = parseFloat(item.value.amountValue);
+      totalVestAmount += amount;
+      totalVestingFee += 2;
+      createGrantTxFee += 0.01;
+    });
+
+    let vestCount = this.props.items.length;
+    let totalCost = totalVestAmount + totalVestingFee + createGrantTxFee + totalVestingTxFee;
+
+    return (
+      <div id="summaryTable">
+      {vestCount > 0?
+        (<table className="table">
+          <tbody>
+            <tr>
+              <th scope="row">Lock amount</th>
+              <td className="cellAlignRight">₳ {roundToADA(totalVestAmount)}</td>
+            </tr>
+            <tr>
+              <th scope="row">Vesting fee ({vestCount})</th>
+              <td className="cellAlignRight">₳ {roundToADA(totalVestingFee)}</td>
+            </tr>
+            <tr>
+              <th scope="row">Est. Tx fee</th>
+              <td className="cellAlignRight">₳ {vestCount === 0? 0:roundToADA(createGrantTxFee)}</td>
+            </tr>
+            <tr>
+              <th scope="row">Est. total cost</th>
+              <td className="cellAlignRight">₳ {vestCount === 0? 0:roundToADA(totalCost)}</td>
+            </tr>
+          </tbody>
+        </table>) : null}
+      </div>
     );
   }
 }
@@ -405,7 +458,7 @@ class App extends React.Component {
                   <div className="container">
                     <img style={{"width": "25px", "float": "left", "marginRight": "10px"}}
                                src={this.state.icon} alt=""/>
-                    <div style={{"float": "left"}}>{this.state.balance} ₳</div>
+                    <div style={{"float": "left"}}>₳ {this.state.balance}</div>
                   </div>
                 ) : (
                   <div className="dropdown me-3">
@@ -461,6 +514,8 @@ class App extends React.Component {
               {this.state.selectedTab === "create" ? (
                 <div id="new-grant">
                   <PendingRecipientList items={this.state.pendingRecipients} addItem={this.addItem} removeItem={this.removeItem}/>
+                  <CreateSummaryTable items={this.state.pendingRecipients} />
+                  <span style={{"width": "100%", "float": "right"}}/>
                   <button id="submitGrants"
                           className="btn btn-primary"
                           disabled={!this.state.connected || this.state.pendingTx}
