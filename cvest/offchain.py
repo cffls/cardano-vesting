@@ -1,7 +1,7 @@
 import os
 import pickle
 from datetime import datetime, timedelta
-from typing import List, Union
+from typing import List, Union, Tuple
 
 import cbor2
 from cachetools import TTLCache, cached
@@ -163,7 +163,11 @@ def typed_datum(utxo: UTxO) -> UTxO:
         try:
             datum = VestingDatum.from_primitive(cbor2.loads(utxo.output.datum.cbor))
         except Exception:
-            datum = None
+            try:
+                datum = VestingDatum.from_primitive(cbor2.loads(utxo.output.datum.to_cbor("bytes")))
+            except Exception as e:
+                print(e)
+                datum = None
         utxo.output.datum = datum
     return utxo
 
@@ -255,9 +259,6 @@ def vest(beneficiary: Address, utxo: UTxO) -> Transaction:
     """
 
     tx_builder = TransactionBuilder(context)
-
-    # tx_builder.execution_memory_buffer = 0.3
-    # tx_builder.execution_step_buffer = 0.3
 
     tx_builder.add_script_input(
         utxo, vest_utxo, None, Redeemer(RedeemerTag.SPEND, data=PlutusData())

@@ -21,6 +21,12 @@ html, body {
     float: right;
 }
 
+.AddressWrapper {
+    cursor: default;
+    white-space: nowrap;
+    overflow: auto;
+}
+
 .cellAlignRight {
     text-align: right;
 }

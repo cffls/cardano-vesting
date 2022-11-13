@@ -47,6 +47,8 @@ def format_utxo(utxo: UTxO):
             else ""
         ),
         "min_vest_amount": utxo.output.datum.min_vest_amount,
+        "vestable": oc.vestable(utxo),
+        "utxo": utxo.to_cbor()
     }
 
 
@@ -111,6 +113,25 @@ def create_grants():
     )
 
     return {"tx": tx.to_cbor()}
+
+
+@app.route("/create_vest", methods=["POST"])
+@cross_origin()
+def create_vest():
+    data = request.json
+    utxo = oc.typed_datum(UTxO.from_cbor(data["utxo"]))
+    print(UTxO.from_cbor(data["utxo"]))
+    addresses = clean_addresses(request.args.getlist("addresses"))
+
+    for address in addresses:
+        if address.payment_part == utxo.output.datum.beneficiary:
+            tx = oc.vest(address, utxo)
+            return {"tx": tx.to_cbor()}
+
+    tx = oc.vest(Address(VerificationKeyHash(utxo.output.datum.beneficiary), network=oc.NETWORK), utxo)
+    oc.context.submit_tx(tx.to_cbor())
+
+    return {"tx_id": tx.id.payload.hex()}
 
 
 def compose_tx_and_witness(data):

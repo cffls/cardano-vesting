@@ -1,8 +1,35 @@
 import React from 'react';
+import { Tooltip } from 'bootstrap';
 import cbor from "cbor";
-import { Buffer } from 'buffer';
 import * as CardanoWasm from "@emurgo/cardano-serialization-lib-asmjs";
 
+
+class AddressWrapper extends React.Component {
+  // AddressWrapper is a React component that wraps the Cardano address
+  // It displays the first 30 characters of the address, and the full address on hover
+  constructor(props) {
+    super(props);
+    this.state = {
+      address: props.address,
+    };
+  }
+
+  componentDidMount() {
+    let tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
+    tooltipTriggerList.map(function (tooltipTriggerEl) {
+      return new Tooltip(tooltipTriggerEl)
+    })
+  }
+
+  render() {
+    return (
+      <div className="AddressWrapper" data-bs-toggle="tooltip" data-bs-placement="left"
+        title={this.state.address}>
+        {this.state.address}
+      </div>
+    );
+  }
+}
 
 class PendingRecipientList extends React.Component {
   render () {
@@ -33,10 +60,14 @@ class PendingRecipientList extends React.Component {
 }
 
 class VestList extends React.Component {
+  // removeItem (itemIndex) {
+  //   this.
+  // }
+
   render () {
     var items = this.props.items.map((item, index) => {
       return (
-        <VestListItem key={index} item={item} index={index}/>
+        <VestListItem key={index} item={item} index={index} removeItem={this.props.removeItem} vest={this.props.vest}/>
       );
     });
 
@@ -47,8 +78,9 @@ class VestList extends React.Component {
             <th style={{width: "5%"}} scope="col">#</th>
             <th style={{width: "10%"}} scope="col">Amount</th>
             <th style={{width: "20%"}} scope="col">Vest date (UTC)</th>
-            <th style={{width: "30%"}} scope="col">Sender</th>
-            <th style={{width: "12%"}} scope="col">Cancellable</th>
+            <th style={{width: "20%"}} scope="col">Sender</th>
+            <th style={{width: "8%"}} scope="col">Cancellable</th>
+            <th style={{width: "5%"}} scope="col">Action</th>
           </tr>
         </thead>
         <tbody>
@@ -61,14 +93,39 @@ class VestList extends React.Component {
 
 class VestListItem extends React.Component {
 
+  constructor(props) {
+    super(props);
+
+    this.state = {
+      "pendingTx": false
+    }
+  }
+
+  async vest(utxo) {
+    this.setState({"pendingTx": true});
+    await this.props.vest(utxo);
+    this.props.removeItem(this.props.index);
+    this.setState({"pendingTx": false});
+  }
+
   render () {
     return(
       <tr>
         <th scope="row">{this.props.index+1}</th>
-        <td >₳ {parseFloat(this.props.item.amount)/1000000}</td>
+        <td >₳ {parseFloat(this.props.item.min_vest_amount)/1000000}</td>
         <td >{this.props.item.deadline}</td>
-        <td >{this.props.item.granter}</td>
+        <td ><AddressWrapper address={this.props.item.granter}/></td>
         <td >{this.props.item.cancellable? "Yes":"No"}</td>
+        <td >{this.props.item.vestable?
+            <button className="btn btn-primary"
+                    onClick={() => this.vest(this.props.item.utxo)}>
+              {!this.state.pendingTx?
+              "Take": <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>}
+            </button>:
+
+          null
+        }
+        </td>
       </tr>
     );
   }
@@ -107,9 +164,11 @@ class GrantListItem extends React.Component {
     return(
       <tr>
         <th scope="row">{this.props.index+1}</th>
-        <td >₳ {parseFloat(this.props.item.amount)/1000000}</td>
+        <td >₳ {parseFloat(this.props.item.min_vest_amount)/1000000}</td>
         <td >{this.props.item.deadline}</td>
-        <td >{(this.props.item.beneficiary.length) > 0? this.props.item.beneficiary: this.props.item.beneficiary_script}</td>
+        <td >{(this.props.item.beneficiary.length) > 0?
+          <AddressWrapper address={this.props.item.beneficiary}/>:
+          <AddressWrapper address={this.props.item.beneficiary_script}/>}</td>
         <td >{this.props.item.cancellable? "Yes":"No"}</td>
       </tr>
     );
@@ -251,7 +310,7 @@ class CreateSummaryTable extends React.Component {
               <td className="cellAlignRight">₳ {roundToADA(totalVestAmount)}</td>
             </tr>
             <tr>
-              <th scope="row">Vesting fee ({vestCount})</th>
+              <th scope="row">Service fee ({vestCount})</th>
               <td className="cellAlignRight">₳ {roundToADA(totalVestingFee)}</td>
             </tr>
             <tr>
@@ -259,7 +318,7 @@ class CreateSummaryTable extends React.Component {
               <td className="cellAlignRight">₳ {vestCount === 0? 0:roundToADA(createGrantTxFee)}</td>
             </tr>
             <tr>
-              <th scope="row">Est. total cost</th>
+              <th scope="row">Total</th>
               <td className="cellAlignRight">₳ {vestCount === 0? 0:roundToADA(totalCost)}</td>
             </tr>
           </tbody>
@@ -292,6 +351,8 @@ class App extends React.Component {
     this.connectWallet = this.connectWallet.bind(this);
     this.signTx = this.signTx.bind(this);
     this.sendTxAndWitnessBack = this.sendTxAndWitnessBack.bind(this);
+    this.submitVestRequest = this.submitVestRequest.bind(this);
+    this.removeVestItem = this.removeVestItem.bind(this);
   }
 
   async componentDidMount() {
@@ -339,6 +400,12 @@ class App extends React.Component {
     this.setState({pendingRecipients: items});
   }
 
+  removeVestItem (itemIndex) {
+    var items = [...this.state.vests];
+    items.splice(itemIndex, 1);
+    this.setState({vests: items});
+  }
+
   async updateVestList() {
     let usedAddresses = await this.state.wallet.getUsedAddresses();
     let unusedAddresses = await this.state.wallet.getUnusedAddresses();
@@ -367,6 +434,30 @@ class App extends React.Component {
 
     if (r.results.length > 0) {
       this.setState({grants: r.results});
+    }
+  }
+
+  async submitVestRequest(utxo) {
+    console.log(utxo);
+    try {
+      let unusedAddresses = await this.state.wallet.getUnusedAddresses();
+      let usedAddresses = await this.state.wallet.getUsedAddresses();
+      let response = await fetch('http://127.0.0.1:5000/create_vest', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(
+          {
+            'addresses': usedAddresses + unusedAddresses,
+            'utxo': utxo,
+          }
+        )
+      })
+      let data = await response.json();
+      alert("Transaction: " + data["tx_id"] + " submitted!");
+    } catch(error) {
+      console.log(error);
     }
   }
 
@@ -399,6 +490,7 @@ class App extends React.Component {
   }
 
   async signTx(tx) {
+    console.log(tx);
     let witness = await this.state.wallet.signTx(tx['tx']);
     await this.sendTxAndWitnessBack(tx['tx'], witness);
   }
@@ -528,7 +620,7 @@ class App extends React.Component {
                 ) : null}
               {this.state.selectedTab === "vest" ? (
                 <div id="vest-list">
-                  <VestList items={this.state.vests}/>
+                  <VestList items={this.state.vests} removeItem={this.removeVestItem} vest={this.submitVestRequest}/>
                 </div>
                 ) :null}
               {this.state.selectedTab === "grants" ? (
