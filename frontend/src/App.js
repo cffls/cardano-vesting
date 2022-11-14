@@ -204,13 +204,17 @@ class RecipientListItem extends React.Component {
 class RecipientForm extends React.Component {
   constructor(props) {
     super(props);
+    let curTime = new Date().toISOString().split(":").slice(0, 2).join(":");
+    let deadline = React.createRef();
+    deadline.current = curTime;
+
     this.state = {
       address: React.createRef(),
       amount: React.createRef(),
-      deadline: React.createRef(),
-      curTime: new Date().toISOString().split(":").slice(0, 2).join(":"),
+      deadline: deadline,
+      curTime: curTime,
       form: React.createRef()
-    }
+    };
   }
 
   async onSubmit(event) {
@@ -236,7 +240,7 @@ class RecipientForm extends React.Component {
       return;
     }
 
-    let deadlineValue = Date.parse(this.state.deadline.current.value);
+    let deadlineValue = Date.parse(this.state.deadline.current.value+":00.000Z");
 
     if (deadlineValue < Date.now()) {
       alert("Vest date must be in the future");
@@ -247,7 +251,7 @@ class RecipientForm extends React.Component {
       this.props.addItem({addressValue, amountValue, deadlineValue});
       this.state.address.current.value = "";
       this.state.amount.current.value = "";
-      this.state.deadline.current.value = "";
+      this.state.deadline.current.value = new Date().toISOString().split(":").slice(0, 2).join(":");
       this.state.form.current.reset();
     }
   }
@@ -263,7 +267,7 @@ class RecipientForm extends React.Component {
           <input type="text" className="form-control" ref={this.state.amount} placeholder="Amount"/>
         </td>
         <td>
-          <input type="datetime-local" className="form-control" min={this.state.curTime} ref={this.state.deadline}/>
+          <input type="datetime-local" className="form-control" defaultValue={this.state.curTime} min={this.state.curTime} ref={this.state.deadline}/>
         </td>
         <td className="cellAlignRight">
           <form ref={this.state.form} onSubmit={(event) => this.onSubmit(event)} className="form-inline">
@@ -438,7 +442,6 @@ class App extends React.Component {
   }
 
   async submitVestRequest(utxo) {
-    console.log(utxo);
     try {
       let unusedAddresses = await this.state.wallet.getUnusedAddresses();
       let usedAddresses = await this.state.wallet.getUsedAddresses();
