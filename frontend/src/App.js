@@ -118,6 +118,7 @@ class VestListItem extends React.Component {
         <td >{this.props.item.cancellable? "Yes":"No"}</td>
         <td >{this.props.item.vestable?
             <button className="btn btn-primary"
+                    disabled={this.state.pendingTx}
                     onClick={() => this.vest(this.props.item.utxo)}>
               {!this.state.pendingTx?
               "Take": <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>}
@@ -235,8 +236,8 @@ class RecipientForm extends React.Component {
       return;
     }
 
-    if (parseFloat(amountValue) < 3) {
-      alert("Minimum ADA amount is 3");
+    if (parseFloat(amountValue) < 1) {
+      alert("Minimum ADA amount is 1");
       return;
     }
 
@@ -361,6 +362,9 @@ class App extends React.Component {
 
   async componentDidMount() {
     let wallets = ["nami", "eternl"];
+
+    // Sleep for 0.1 seconds to allow the wallet to load
+    await new Promise(r => setTimeout(r, 100));
 
     for (let i = 0; i < wallets.length; i++) {
       let wallet = wallets[i];
