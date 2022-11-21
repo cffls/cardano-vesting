@@ -367,17 +367,24 @@ class App extends React.Component {
     await new Promise(r => setTimeout(r, 100));
 
     for (let i = 0; i < wallets.length; i++) {
-      let wallet = wallets[i];
-      let enabled = await window.cardano[wallet].isEnabled();
-      if (enabled) {
-        let api = await window.cardano[wallet].enable();
-        this.setState({wallet: api, walletName: wallet, connected: true}, () => {
-          this.updateWalletInfo();
-          this.updateVestList();
-          this.updateGrantList();
-        });
+      try {
+        let wallet = wallets[i];
+        let enabled = await window.cardano[wallet].isEnabled();
+        if (enabled) {
+          let api = await window.cardano[wallet].enable();
+          this.setState({wallet: api, walletName: wallet, connected: true}, () => {
+            this.updateWalletInfo();
+            this.updateVestList();
+            this.updateGrantList();
+          });
 
-        break;
+          break;
+        }
+      } catch (e) {
+        // If error message contains "no account", then alert
+        if (e.message.includes("no account")) {
+          alert("Please select a DApp account in " + wallets[i]);
+        }
       }
     }
   }
