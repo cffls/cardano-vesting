@@ -424,7 +424,7 @@ class App extends React.Component {
   async updateVestList() {
     let usedAddresses = await this.state.wallet.getUsedAddresses();
     let unusedAddresses = await this.state.wallet.getUnusedAddresses();
-    let response = await fetch("http://127.0.0.1:5000/get_vests?"+ new URLSearchParams({
+    let response = await fetch(process.env.REACT_APP_BACKEND_URL + "/get_vests?"+ new URLSearchParams({
         address: usedAddresses+unusedAddresses,
     }), {
       method: "GET",
@@ -439,7 +439,7 @@ class App extends React.Component {
 
   async updateGrantList() {
     let usedAddresses = await this.state.wallet.getUsedAddresses();
-    let response = await fetch("http://127.0.0.1:5000/get_grants?"+ new URLSearchParams({
+    let response = await fetch(process.env.REACT_APP_BACKEND_URL + "/get_grants?"+ new URLSearchParams({
         address: usedAddresses,
     }), {
       method: "GET",
@@ -456,7 +456,7 @@ class App extends React.Component {
     try {
       let unusedAddresses = await this.state.wallet.getUnusedAddresses();
       let usedAddresses = await this.state.wallet.getUsedAddresses();
-      let response = await fetch('http://127.0.0.1:5000/create_vest', {
+      let response = await fetch(process.env.REACT_APP_BACKEND_URL + "/create_vest", {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -477,7 +477,7 @@ class App extends React.Component {
 
   async submitGrantRequest(senders, change_address) {
     try {
-      let response = await fetch('http://127.0.0.1:5000/create_grants', {
+      let response = await fetch(process.env.REACT_APP_BACKEND_URL + "/create_grants", {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -510,7 +510,7 @@ class App extends React.Component {
   }
 
   async sendTxAndWitnessBack(tx, witness) {
-    fetch('http://127.0.0.1:5000/submit_tx', {
+    fetch(process.env.REACT_APP_BACKEND_URL + "/submit_tx", {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
